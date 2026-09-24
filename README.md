@@ -90,3 +90,182 @@
 
 Во всех случаях, кроме последнего, платформа остаётся работоспособной: лента, заявки, чат и отметка явки от внешнего сервиса не зависят вовсе.
 
+## Этап 3. Архитектура и детальное проектирование
+
+## 3.1. Анализ нагрузок
+
+Исходные данные: 10 000 пользователей в сутки, 14 000 сессий, 60% трафика в пиковые 4 часа.
+
+| Показатель | Значение |
+|---|---|
+| Чтение | 170 000 в сутки (лента 56 тыс., карточки 42 тыс., прочее 72 тыс.) |
+| Запись | 18 000 в сутки (сообщения 12 тыс., заявки и решения 4,8 тыс., прочее 1,2 тыс.) |
+| **Read : Write** | **≈ 9 : 1** |
+| RPS: средний / пиковый / проектный | 2,2 / 7,8 / 16 |
+| Трафик API | ≈ 1,2 ГБ в сутки без сжатия, ≈ 0,45 ГБ с gzip |
+| Трафик всего (API, статика, тайлы) | ≈ 2,4 ГБ в сутки, в пик меньше 2 Мбит/с |
+| Внешние запросы | Nominatim ≈ 40 в сутки; OSM-тайлы ≈ 4 000 в сутки (промахи кэша) |
+
+**Диск на 5 лет:**
+
+| Таблица | Строк в сутки | Строк за 5 лет | Объём |
+|---|---|---|---|
+| `messages` | 12 000 | 21,9 млн | 5,9 ГБ |
+| `participations` | 2 500 | 4,6 млн | 0,5 ГБ |
+| `meetings` | 200 | 365 тыс. | 0,4 ГБ |
+| Остальные | - | - | 0,2 ГБ |
+| Индексы | | | 1,9 ГБ |
+| Запас на MVCC и WAL | | | 4,2 ГБ |
+| **Итого** | | | **≈ 13 ГБ, выделяем том 40 ГБ** |
+
+## 3.2. C4: Context и Container
+
+```mermaid
+flowchart LR
+    user["<b>Студент / Модератор</b><br/>[Person]"]
+    pm["<b>PolyMeet</b><br/>[Software System]"]
+    nom["<b>OSM Nominatim</b><br/>[External]"]
+    tiles["<b>OSM Tile Server</b><br/>[External]"]
+    user -- "HTTPS, WSS" --> pm
+    pm -- "геокодинг, ≤ 1 запроса/с" --> nom
+    pm -- "тайлы через кэш" --> tiles
+    classDef p fill:#08427b,color:#fff
+    classDef s fill:#1168bd,color:#fff
+    classDef e fill:#8a8a8a,color:#fff
+    class user p
+    class pm s
+    class nom,tiles e
+```
+
+```mermaid
+flowchart TB
+    spa["<b>Web-клиент</b><br/>React, MapLibre"]
+    proxy["<b>nginx</b><br/>TLS, статика, кэш тайлов"]
+    api["<b>API</b> ×2<br/>FastAPI, REST + WebSocket"]
+    wgeo["<b>Воркер геокодинга</b> ×1<br/>ARQ, Circuit Breaker"]
+    db[("<b>PostgreSQL 16</b>")]
+    redis[("<b>Redis 7</b><br/>кэш, очередь, pub/sub")]
+    nom["Nominatim"]
+    tiles["OSM Tiles"]
+    spa --> proxy --> api
+    proxy --> tiles
+    api --> db
+    api --> redis
+    wgeo --> redis
+    wgeo --> db
+    wgeo --> nom
+    classDef c fill:#438dd5,color:#fff
+    classDef e fill:#8a8a8a,color:#fff
+    class spa,proxy,api,wgeo,db,redis c
+    class nom,tiles e
+```
+
+## 3.3. Контракты API
+
+Базовый путь `/api/v1`, формат JSON, авторизация `Bearer JWT`. Пагинация курсорная, ошибки в формате RFC 7807. Полная спецификация генерируется в `/api/docs` (OpenAPI).
+
+| Метод и путь | Назначение | p95 |
+|---|---|---|
+| `POST /auth/register`, `/auth/login`, `/auth/refresh` | Регистрация, вход, ротация токена | 500 мс |
+| `GET /meetings?lat&lon&radius_km&category&date&cursor` | Лента с фильтрами | 200 мс |
+| `GET /meetings/map?bbox` | Точки на карте | 200 мс |
+| `GET /meetings/{id}` | Карточка встречи | 150 мс |
+| `POST /meetings` | Создание встречи | 300 мс, при промахе кэша геокодинга 2,5 с |
+| `POST /meetings/{id}/applications` | Заявка (409 при повторной) | 300 мс |
+| `DELETE /meetings/{id}/applications/me` | Отмена участия | 300 мс |
+| `POST /applications/{id}/decision` | Принять или отклонить | 300 мс |
+| `PUT /meetings/{id}/attendance` | Отметка явки | 300 мс |
+| `GET /meetings/{id}/messages`, `GET /ws` | История чата и WebSocket | 150 мс, доставка ≤ 1 с |
+| `POST /reports`, `POST /moderation/reports/{id}/resolve` | Жалоба и её разбор | 300 мс |
+| `GET /health/ready` | Проверка готовности | 50 мс |
+
+Нефункциональные требования: доступность ≥ 99,5%; таймауты: `statement_timeout` в PostgreSQL 3 с, запрос к Nominatim 5 с; лимиты: вход 5 в минуту с IP, запись 60 в минуту на пользователя.
+
+## 3.4. Проектирование данных
+
+```mermaid
+erDiagram
+    users ||--o{ meetings : "организует"
+    users ||--o{ participations : "подаёт"
+    meetings ||--o{ participations : "имеет"
+    meetings ||--o{ messages : "содержит"
+    users ||--o{ messages : "пишет"
+    users ||--o{ reports : "жалуется"
+    meetings }o..o| geocode_cache : "address_norm"
+
+    users { bigint id PK
+        citext email UK
+        text password_hash
+        int attended_count
+        int marked_count }
+    meetings { bigint id PK
+        bigint organizer_id FK
+        timestamptz starts_at
+        text address_norm
+        float8 lat
+        float8 lon
+        enum geo_status
+        smallint capacity
+        smallint accepted_count
+        enum status }
+    participations { bigint id PK
+        bigint meeting_id FK
+        bigint user_id FK
+        enum status
+        enum attendance }
+    messages { bigint id PK
+        bigint meeting_id FK
+        bigint author_id FK
+        text body }
+    reports { bigint id PK
+        bigint reporter_id FK
+        enum target_type
+        bigint target_id }
+    geocode_cache { text address_norm PK
+        float8 lat
+        float8 lon }
+```
+
+| Индекс | Какой запрос обслуживает |
+|---|---|
+| `meetings (starts_at) WHERE status='published'` | Лента |
+| `meetings USING gist (ll_to_earth(lat, lon)) WHERE status='published'` | Поиск в радиусе |
+| `meetings USING gin (title gin_trgm_ops)` | Поиск по названию |
+| `participations UNIQUE (meeting_id, user_id)` | Запрет повторной заявки |
+| `participations (meeting_id, status, created_at)` | Список заявок, лист ожидания |
+| `messages (meeting_id, id)` | История чата (keyset-пагинация) |
+
+**Почему выдержит нагрузку:**
+- В пик к БД идёт меньше 50 SQL-запросов в секунду, и все они по индексам.
+- Прошедшие встречи переводятся в статус `finished`, поэтому частичные индексы содержат только ≈ 6 000 будущих встреч.
+- Горячие данные занимают меньше 200 МБ и целиком помещаются в `shared_buffers`.
+- Keyset-пагинация не замедляется с ростом таблиц.
+- Счётчики `accepted_count` и `attended_count` избавляют от агрегации. Лишний участник сверх лимита не пройдёт: место занимается атомарным запросом `UPDATE ... WHERE accepted_count < capacity`.
+
+## 3.5. Масштабирование ×10 (100 000 пользователей в сутки)
+
+Нагрузка вырастет до 160 RPS в проектный пик, 7 000 WebSocket-соединений и ≈ 115 ГБ базы за 5 лет.
+
+```mermaid
+flowchart LR
+    u(["Пользователи"]) --> cdn["CDN<br/>статика, тайлы"]
+    u --> lb["nginx ×2"] --> api["API ×4+"]
+    api --> redis[("Redis + Sentinel")]
+    api --> pgb["PgBouncer"] --> pgp[("PG primary")]
+    pgb --> pgr[("PG реплики ×2")]
+    pgp -. репликация .-> pgr
+    w["Воркер геокодинга ×1"] --> redis
+    w --> nom["Nominatim"]
+```
+
+- **API:** 4 и больше экземпляров. Это возможно, потому что API не хранит состояния: чат между экземплярами идёт через Redis pub/sub.
+- **БД:** PgBouncer, 2 реплики для чтения (соотношение 9 : 1 это позволяет), секционирование `messages` по месяцам.
+- **Кэш ленты:** Redis на 30 с, ключ по ячейке geohash.
+- **Тайлы:** CDN или собственные тайлы региона (PMTiles), чтобы не нарушать правила OSM.
+- **Кэширование внешних запросов (защита от блокировки Nominatim):**
+  - нормализация адреса и справочник популярных мест;
+  - кэш Redis на 30 дней и постоянный кэш в PostgreSQL;
+  - схлопывание одинаковых запросов (`job_id` равен хэшу адреса);
+  - один воркер с общим лимитом 1 запрос/с;
+  - Circuit Breaker.
+- **Проверка на ×10:** около 600 внешних запросов в сутки, в пик ≈ 1,5 в минуту при лимите 60.
