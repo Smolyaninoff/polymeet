@@ -78,6 +78,13 @@ def create_token(
     return jwt.encode(claims, settings.jwt_secret, algorithm=JWT_ALGORITHM)
 
 
+def user_id_from_subject(sub: str) -> int | None:
+    """id пользователя из ``sub``: в JWT это строка, в базе — положительное число."""
+    if sub.isascii() and sub.isdigit() and int(sub) > 0:
+        return int(sub)
+    return None
+
+
 def decode_token(token: str, expected_type: TokenType, *, settings: Settings) -> TokenClaims:
     """Проверяет подпись, срок и тип токена; любая ошибка — ``UnauthorizedError``."""
     try:

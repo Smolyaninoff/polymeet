@@ -1,7 +1,8 @@
 """Все операции контракта /api/v1: доступ и пример корректного запроса.
 
 Таблица должна совпадать с OpenAPI (это проверяет tests/unit/test_openapi_contract.py);
-при добавлении эндпоинта сюда добавляется строка.
+при добавлении эндпоинта сюда добавляется строка. Когда заглушка заменяется реализацией,
+операция помечается ``implemented=True``: проверки 501 из test_api_stubs.py её больше не касаются.
 """
 
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ class Operation:
     url: str
     access: Access
     request: dict[str, Any] = field(default_factory=dict)
+    implemented: bool = False
 
 
 OPERATIONS = [
@@ -43,6 +45,7 @@ OPERATIONS = [
                 "display_name": "Аня",
             }
         },
+        implemented=True,
     ),
     Operation(
         "login",
@@ -51,6 +54,7 @@ OPERATIONS = [
         "/api/v1/auth/login",
         "none",
         {"json": {"email": "anya@edu.spbstu.ru", "password": "password-123"}},
+        implemented=True,
     ),
     Operation(
         "refresh",

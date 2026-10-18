@@ -5,7 +5,9 @@ from app.models.user import User
 from tests.api_operations import OPERATIONS, Operation
 from tests.integration.helpers import AuthHeaders, CreateUser
 
-ANONYMOUS_ALLOWED = [op for op in OPERATIONS if op.access != "required"]
+STUBS = [op for op in OPERATIONS if not op.implemented]
+ANONYMOUS_STUBS = [op for op in STUBS if op.access != "required"]
+# Требование токена проверяется и у реализованных операций: зависимость идёт раньше тела.
 PROTECTED = [op for op in OPERATIONS if op.access == "required"]
 
 
@@ -21,7 +23,7 @@ def _assert_not_implemented(response: httpx.Response, op: Operation) -> None:
     assert (problem["code"], problem["instance"]) == ("NOT_IMPLEMENTED", op.url)
 
 
-@pytest.mark.parametrize("op", ANONYMOUS_ALLOWED, ids=lambda op: op.operation_id)
+@pytest.mark.parametrize("op", ANONYMOUS_STUBS, ids=lambda op: op.operation_id)
 async def test_public_stub_answers_not_implemented(
     client: httpx.AsyncClient, op: Operation
 ) -> None:
@@ -38,7 +40,7 @@ async def test_protected_stub_requires_token(client: httpx.AsyncClient, op: Oper
     assert response.json()["code"] == "UNAUTHORIZED"
 
 
-@pytest.mark.parametrize("op", OPERATIONS, ids=lambda op: op.operation_id)
+@pytest.mark.parametrize("op", STUBS, ids=lambda op: op.operation_id)
 async def test_stub_with_token_reaches_handler(
     client: httpx.AsyncClient, user: User, auth_headers: AuthHeaders, op: Operation
 ) -> None:

@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import (
 from starlette.requests import Request
 
 DEFAULT_POOL_SIZE = 20
+
+_UNIQUE_VIOLATION = "23505"
 
 
 def create_engine(url: str, *, pool_size: int = DEFAULT_POOL_SIZE) -> AsyncEngine:
@@ -28,3 +31,8 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
         except Exception:
             await session.rollback()
             raise
+
+
+def is_unique_violation(exc: IntegrityError) -> bool:
+    """Нарушена уникальность (SQLSTATE 23505), а не CHECK, NOT NULL или внешний ключ."""
+    return getattr(exc.orig, "pgcode", None) == _UNIQUE_VIOLATION

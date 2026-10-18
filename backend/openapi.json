@@ -1390,16 +1390,6 @@
               }
             },
             "description": "`RATE_LIMITED` — Слишком много попыток, повторите позже"
-          },
-          "501": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "`NOT_IMPLEMENTED` — Эндпоинт ещё не реализован"
           }
         },
         "summary": "Вход",
@@ -1589,16 +1579,6 @@
               }
             },
             "description": "`EMAIL_TAKEN` — Этот e-mail уже зарегистрирован"
-          },
-          "501": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "`NOT_IMPLEMENTED` — Эндпоинт ещё не реализован"
           }
         },
         "summary": "Регистрация",
