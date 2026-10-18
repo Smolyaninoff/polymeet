@@ -2,12 +2,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import SessionDep, SettingsDep
+from app.api.deps import RedisDep, SessionDep, SettingsDep
 from app.api.errors import (
     DependencyUnavailableError,
     EmailTakenError,
     InvalidCredentialsError,
-    NotImplementedAppError,
     RateLimitedError,
     UnauthorizedError,
     ValidationAppError,
@@ -21,8 +20,8 @@ from app.services.auth_service import AuthService, AuthTokens
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def get_auth_service(session: SessionDep, settings: SettingsDep) -> AuthService:
-    return AuthService(session, settings)
+def get_auth_service(session: SessionDep, redis: RedisDep, settings: SettingsDep) -> AuthService:
+    return AuthService(session, redis, settings)
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
@@ -75,12 +74,10 @@ async def login(payload: LoginIn, service: AuthServiceDep) -> AuthResponse:
         "Ротация: старый refresh-токен отзывается, выдаётся новая пара. "
         "Повторное использование старого токена — 401.",
     ),
-    responses=error_responses(
-        ValidationAppError, UnauthorizedError, DependencyUnavailableError, NotImplementedAppError
-    ),
+    responses=error_responses(ValidationAppError, UnauthorizedError, DependencyUnavailableError),
 )
-async def refresh(payload: RefreshIn) -> AuthResponse:
-    raise NotImplementedAppError()
+async def refresh(payload: RefreshIn, service: AuthServiceDep) -> AuthResponse:
+    return _auth_response(await service.refresh(payload.refresh_token))
 
 
 @router.post(
@@ -88,9 +85,7 @@ async def refresh(payload: RefreshIn) -> AuthResponse:
     status_code=204,
     summary="Выход",
     description=p95(500, "Отзывает переданный refresh-токен."),
-    responses=error_responses(
-        ValidationAppError, UnauthorizedError, DependencyUnavailableError, NotImplementedAppError
-    ),
+    responses=error_responses(ValidationAppError, UnauthorizedError, DependencyUnavailableError),
 )
-async def logout(payload: RefreshIn) -> None:
-    raise NotImplementedAppError()
+async def logout(payload: RefreshIn, service: AuthServiceDep) -> None:
+    await service.logout(payload.refresh_token)

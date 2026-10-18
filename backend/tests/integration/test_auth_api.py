@@ -1,15 +1,21 @@
+import asyncio
 from typing import Any
 
 import httpx
 import pytest
+from redis.asyncio import Redis
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import Settings
-from app.core.security import decode_token
+from app.core.security import create_token, decode_token
 from app.main import create_app
-from tests.integration.helpers import DEFAULT_PASSWORD, CreateUser, app_client
+from tests.integration.helpers import DEFAULT_PASSWORD, REFUSED_REDIS_URL, CreateUser, app_client
 
 REGISTER = "/api/v1/auth/register"
 LOGIN = "/api/v1/auth/login"
+REFRESH = "/api/v1/auth/refresh"
+LOGOUT = "/api/v1/auth/logout"
 
 
 def _registration(**overrides: Any) -> dict[str, Any]:
@@ -110,3 +116,104 @@ async def test_wrong_password_and_unknown_email_get_identical_answer(
     assert wrong_password.status_code == unknown_email.status_code == 401
     assert wrong_password.json() == unknown_email.json()
     assert wrong_password.json()["code"] == "INVALID_CREDENTIALS"
+
+
+async def _login(client: httpx.AsyncClient, create_user: CreateUser) -> dict[str, Any]:
+    user = await create_user()
+    response = await client.post(LOGIN, json={"email": user.email, "password": DEFAULT_PASSWORD})
+    assert response.status_code == 200, response.text
+    body: dict[str, Any] = response.json()
+    return body
+
+
+async def test_refresh_rotates_pair_and_old_token_is_rejected(
+    client: httpx.AsyncClient, create_user: CreateUser, settings: Settings
+) -> None:
+    tokens = await _login(client, create_user)
+
+    rotated = await client.post(REFRESH, json={"refresh_token": tokens["refresh_token"]})
+    reused = await client.post(REFRESH, json={"refresh_token": tokens["refresh_token"]})
+
+    assert rotated.status_code == 200, rotated.text
+    new = rotated.json()
+    assert new["refresh_token"] != tokens["refresh_token"]
+    assert new["user"] == tokens["user"]
+    assert decode_token(new["access_token"], "access", settings=settings).sub == str(
+        tokens["user"]["id"]
+    )
+    assert reused.status_code == 401
+    assert reused.json()["code"] == "UNAUTHORIZED"
+    # Новый токен из ротации работает
+    next_rotation = await client.post(REFRESH, json={"refresh_token": new["refresh_token"]})
+    assert next_rotation.status_code == 200
+
+
+async def test_parallel_refresh_with_one_token_succeeds_once(
+    client: httpx.AsyncClient, create_user: CreateUser
+) -> None:
+    tokens = await _login(client, create_user)
+
+    responses = await asyncio.gather(
+        *(client.post(REFRESH, json={"refresh_token": tokens["refresh_token"]}) for _ in range(5))
+    )
+
+    assert sorted(response.status_code for response in responses) == [200, 401, 401, 401, 401]
+
+
+@pytest.mark.parametrize("case", ["access_instead_of_refresh", "deleted_user"])
+async def test_refresh_rejects_token_that_cannot_be_rotated(
+    client: httpx.AsyncClient,
+    engine: AsyncEngine,
+    create_user: CreateUser,
+    settings: Settings,
+    case: str,
+) -> None:
+    user = await create_user()
+    token = create_token(
+        str(user.id),
+        "access" if case == "access_instead_of_refresh" else "refresh",
+        settings=settings,
+    )
+    if case == "deleted_user":
+        async with engine.begin() as conn:
+            await conn.execute(text("DELETE FROM users WHERE id = :id"), {"id": user.id})
+
+    response = await client.post(REFRESH, json={"refresh_token": token})
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "UNAUTHORIZED"
+
+
+async def test_logout_revokes_refresh_token_until_it_expires(
+    client: httpx.AsyncClient, redis: Redis, create_user: CreateUser, settings: Settings
+) -> None:
+    tokens = await _login(client, create_user)
+    jti = decode_token(tokens["refresh_token"], "refresh", settings=settings).jti
+
+    logout = await client.post(LOGOUT, json={"refresh_token": tokens["refresh_token"]})
+    repeated = await client.post(LOGOUT, json={"refresh_token": tokens["refresh_token"]})
+    refresh = await client.post(REFRESH, json={"refresh_token": tokens["refresh_token"]})
+
+    assert (logout.status_code, logout.content) == (204, b"")
+    assert repeated.status_code == 204
+    assert refresh.status_code == 401
+    # Отметка об отзыве живёт столько же, сколько сам токен, и не копится бесконечно
+    ttl = await redis.ttl(f"rt:revoked:{jti}")
+    assert settings.jwt_refresh_ttl_days * 86400 - 60 < ttl <= settings.jwt_refresh_ttl_days * 86400
+
+
+async def test_without_redis_login_works_but_token_revocation_is_unavailable(
+    settings: Settings, create_user: CreateUser
+) -> None:
+    user = await create_user()
+    no_redis = settings.model_copy(update={"redis_url": REFUSED_REDIS_URL})
+
+    async with app_client(create_app(no_redis)) as client:
+        login = await client.post(LOGIN, json={"email": user.email, "password": DEFAULT_PASSWORD})
+        refresh_token = login.json()["refresh_token"]
+        refresh = await client.post(REFRESH, json={"refresh_token": refresh_token})
+        logout = await client.post(LOGOUT, json={"refresh_token": refresh_token})
+
+    assert login.status_code == 200, login.text
+    assert refresh.status_code == logout.status_code == 503
+    assert refresh.json()["code"] == logout.json()["code"] == "DEPENDENCY_UNAVAILABLE"

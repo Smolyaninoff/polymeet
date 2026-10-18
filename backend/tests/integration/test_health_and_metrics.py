@@ -7,11 +7,10 @@ import pytest
 
 from app.core.config import Settings
 from app.main import create_app
-from tests.integration.helpers import app_client
+from tests.integration.helpers import REFUSED_REDIS_URL, app_client
 
 # Порт 1 на localhost закрыт: соединение сразу отклоняется.
 REFUSED_DATABASE_URL = "postgresql+asyncpg://polymeet:polymeet@127.0.0.1:1/polymeet"
-REFUSED_REDIS_URL = "redis://127.0.0.1:1/0"
 
 
 async def _ready(settings: Settings) -> httpx.Response:

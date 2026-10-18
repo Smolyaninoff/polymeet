@@ -22,6 +22,8 @@ from app.models.user import User
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_PASSWORD = "correct-horse-42"
+# Порт 1 на localhost закрыт: соединение сразу отклоняется.
+REFUSED_REDIS_URL = "redis://127.0.0.1:1/0"
 
 
 class CreateUser(Protocol):

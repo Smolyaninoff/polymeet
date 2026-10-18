@@ -2,12 +2,14 @@ from typing import Annotated, Any
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.db import get_session
 from app.core.errors import UnauthorizedError
 from app.core.logging import bind_request_context
+from app.core.redis import get_redis
 from app.core.security import INVALID_TOKEN_MESSAGE, decode_token, user_id_from_subject
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
@@ -26,6 +28,7 @@ async def get_app_settings(request: Request) -> Settings:
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
+RedisDep = Annotated[Redis, Depends(get_redis)]
 _CredentialsDep = Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)]
 
 

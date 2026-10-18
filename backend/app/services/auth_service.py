@@ -1,17 +1,35 @@
-"""Регистрация и вход."""
+"""Регистрация, вход, ротация refresh-токена и выход."""
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import structlog
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.db import is_unique_violation
-from app.core.errors import EmailTakenError, InvalidCredentialsError, ValidationAppError
+from app.core.errors import (
+    DependencyUnavailableError,
+    EmailTakenError,
+    InvalidCredentialsError,
+    UnauthorizedError,
+    ValidationAppError,
+)
 from app.core.ids import new_id
-from app.core.security import create_token, hash_password, verify_password
+from app.core.security import (
+    INVALID_TOKEN_MESSAGE,
+    TokenClaims,
+    create_token,
+    decode_token,
+    hash_password,
+    user_id_from_subject,
+    verify_password,
+)
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 
@@ -67,10 +85,15 @@ async def _dummy_password_hash(settings: Settings) -> str:
     return _dummy_hashes[key]
 
 
+def _revoked_key(jti: str) -> str:
+    return f"rt:revoked:{jti}"
+
+
 class AuthService:
-    def __init__(self, session: AsyncSession, settings: Settings) -> None:
+    def __init__(self, session: AsyncSession, redis: Redis, settings: Settings) -> None:
         self._session = session
         self._users = UserRepository(session)
+        self._redis = redis
         self._settings = settings
 
     async def register(self, *, email: str, password: str, display_name: str) -> AuthTokens:
@@ -101,6 +124,42 @@ class AuthService:
         if user is None or not password_ok:
             raise InvalidCredentialsError()
         return self._issue_tokens(user)
+
+    async def refresh(self, refresh_token: str) -> AuthTokens:
+        """Ротация: старый токен отзывается, выдаётся новая пара.
+
+        Отзыв — одна атомарная операция ``SET NX``: из параллельных запросов с одним
+        токеном новую пару получает ровно один, остальные — 401.
+        """
+        claims = decode_token(refresh_token, "refresh", settings=self._settings)
+        user_id = user_id_from_subject(claims.sub)
+        user = await self._users.get_by_id(user_id) if user_id else None
+        if user is None:
+            raise UnauthorizedError(INVALID_TOKEN_MESSAGE)
+        if not await self._revoke(claims):
+            logger.warning("refresh_token_reused", user_id=user.id)
+            raise UnauthorizedError(INVALID_TOKEN_MESSAGE)
+        return self._issue_tokens(user)
+
+    async def logout(self, refresh_token: str) -> None:
+        """Отзывает refresh-токен; повторный выход с тем же токеном не ошибка."""
+        claims = decode_token(refresh_token, "refresh", settings=self._settings)
+        await self._revoke(claims)
+
+    async def _revoke(self, claims: TokenClaims) -> bool:
+        """Помечает ``jti`` отозванным до истечения токена. ``False`` — уже был отозван.
+
+        Без Redis отзыв не проверить, а безопасной деградации нет: 503.
+        """
+        remaining = (claims.expires_at - datetime.now(UTC)).total_seconds()
+        try:
+            created = await self._redis.set(
+                _revoked_key(claims.jti), 1, nx=True, ex=max(1, math.ceil(remaining))
+            )
+        except RedisError as exc:
+            logger.warning("token_revocation_unavailable", error=str(exc))
+            raise DependencyUnavailableError() from exc
+        return bool(created)
 
     def _issue_tokens(self, user: User) -> AuthTokens:
         sub = str(user.id)

@@ -63,6 +63,7 @@ OPERATIONS = [
         "/api/v1/auth/refresh",
         "none",
         {"json": {"refresh_token": "token"}},
+        implemented=True,
     ),
     Operation(
         "logout",
@@ -71,6 +72,7 @@ OPERATIONS = [
         "/api/v1/auth/logout",
         "none",
         {"json": {"refresh_token": "token"}},
+        implemented=True,
     ),
     Operation("get_me", "GET", "/api/v1/users/me", "/api/v1/users/me", "required"),
     Operation(
