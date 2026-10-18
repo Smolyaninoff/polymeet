@@ -74,7 +74,9 @@ OPERATIONS = [
         {"json": {"refresh_token": "token"}},
         implemented=True,
     ),
-    Operation("get_me", "GET", "/api/v1/users/me", "/api/v1/users/me", "required"),
+    Operation(
+        "get_me", "GET", "/api/v1/users/me", "/api/v1/users/me", "required", implemented=True
+    ),
     Operation(
         "list_my_meetings",
         "GET",
@@ -91,7 +93,14 @@ OPERATIONS = [
         "required",
         {"params": {"status": "waitlist"}},
     ),
-    Operation("get_user", "GET", "/api/v1/users/{user_id}", "/api/v1/users/1", "optional"),
+    Operation(
+        "get_user",
+        "GET",
+        "/api/v1/users/{user_id}",
+        "/api/v1/users/1",
+        "optional",
+        implemented=True,
+    ),
     Operation("list_categories", "GET", "/api/v1/categories", "/api/v1/categories", "none"),
     Operation(
         "list_meetings",

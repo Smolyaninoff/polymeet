@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import RedisDep, SessionDep, SettingsDep
+from app.api.deps import ClientIp, RedisDep, SessionDep, SettingsDep
 from app.api.errors import (
     DependencyUnavailableError,
     EmailTakenError,
@@ -61,8 +61,10 @@ async def register(payload: RegisterIn, service: AuthServiceDep) -> AuthResponse
     ),
     responses=error_responses(ValidationAppError, InvalidCredentialsError, RateLimitedError),
 )
-async def login(payload: LoginIn, service: AuthServiceDep) -> AuthResponse:
-    tokens = await service.login(email=payload.email, password=payload.password)
+async def login(payload: LoginIn, service: AuthServiceDep, client_ip: ClientIp) -> AuthResponse:
+    tokens = await service.login(
+        email=payload.email, password=payload.password, client_ip=client_ip
+    )
     return _auth_response(tokens)
 
 

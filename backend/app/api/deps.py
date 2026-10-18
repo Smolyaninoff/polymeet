@@ -1,3 +1,4 @@
+from ipaddress import ip_address
 from typing import Annotated, Any
 
 from fastapi import Depends, Request
@@ -26,9 +27,22 @@ async def get_app_settings(request: Request) -> Settings:
     return settings
 
 
+async def get_client_ip(request: Request) -> str:
+    """IP клиента: заголовок ``X-Real-IP`` от nginx, без него — адрес соединения.
+
+    Значение, не похожее на IP-адрес, игнорируется: оно попадает в ключи Redis.
+    """
+    real_ip = request.headers.get("X-Real-IP", "").strip()
+    try:
+        return str(ip_address(real_ip))
+    except ValueError:
+        return request.client.host if request.client else "unknown"
+
+
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
 RedisDep = Annotated[Redis, Depends(get_redis)]
+ClientIp = Annotated[str, Depends(get_client_ip)]
 _CredentialsDep = Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)]
 
 

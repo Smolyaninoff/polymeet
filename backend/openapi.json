@@ -2720,16 +2720,6 @@
               }
             },
             "description": "`UNAUTHORIZED` — Требуется авторизация"
-          },
-          "501": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "`NOT_IMPLEMENTED` — Эндпоинт ещё не реализован"
           }
         },
         "security": [
@@ -3003,16 +2993,6 @@
               }
             },
             "description": "`NOT_FOUND` — Объект не найден"
-          },
-          "501": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "`NOT_IMPLEMENTED` — Эндпоинт ещё не реализован"
           }
         },
         "security": [

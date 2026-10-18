@@ -10,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.core.config import Settings
 from app.core.security import create_token, decode_token
 from app.main import create_app
-from tests.integration.helpers import DEFAULT_PASSWORD, REFUSED_REDIS_URL, CreateUser, app_client
+from tests.integration.helpers import (
+    DEFAULT_PASSWORD,
+    REFUSED_REDIS_URL,
+    CreateUser,
+    app_client,
+    read_log_records,
+)
 
 REGISTER = "/api/v1/auth/register"
 LOGIN = "/api/v1/auth/login"
@@ -202,18 +208,87 @@ async def test_logout_revokes_refresh_token_until_it_expires(
     assert settings.jwt_refresh_ttl_days * 86400 - 60 < ttl <= settings.jwt_refresh_ttl_days * 86400
 
 
+async def _failed_login(
+    client: httpx.AsyncClient, email: str, ip: str | None = None
+) -> httpx.Response:
+    headers = {"X-Real-IP": ip} if ip else {}
+    return await client.post(
+        LOGIN, json={"email": email, "password": "not-the-password"}, headers=headers
+    )
+
+
 async def test_without_redis_login_works_but_token_revocation_is_unavailable(
-    settings: Settings, create_user: CreateUser
+    settings: Settings, create_user: CreateUser, capsys: pytest.CaptureFixture[str]
 ) -> None:
     user = await create_user()
     no_redis = settings.model_copy(update={"redis_url": REFUSED_REDIS_URL})
 
     async with app_client(create_app(no_redis)) as client:
+        failures = [
+            await _failed_login(client, user.email)
+            for _ in range(settings.auth_rate_limit_attempts + 1)
+        ]
         login = await client.post(LOGIN, json={"email": user.email, "password": DEFAULT_PASSWORD})
         refresh_token = login.json()["refresh_token"]
         refresh = await client.post(REFRESH, json={"refresh_token": refresh_token})
         logout = await client.post(LOGOUT, json={"refresh_token": refresh_token})
 
+    # Лимит попыток без Redis не применяется, но это видно в логах
+    assert {response.status_code for response in failures} == {401}
+    warnings = [
+        record
+        for record in read_log_records(capsys)
+        if record["event"] == "login_rate_limit_unavailable"
+    ]
+    assert warnings
+    assert warnings[0]["level"] == "warning"
     assert login.status_code == 200, login.text
+    # Отзыв refresh-токена без Redis не проверить: безопасной деградации нет
     assert refresh.status_code == logout.status_code == 503
     assert refresh.json()["code"] == logout.json()["code"] == "DEPENDENCY_UNAVAILABLE"
+
+
+async def test_failed_login_after_all_attempts_is_rate_limited(
+    client: httpx.AsyncClient, create_user: CreateUser, settings: Settings
+) -> None:
+    user = await create_user()
+    attempts = settings.auth_rate_limit_attempts
+
+    failures = [await _failed_login(client, user.email) for _ in range(attempts)]
+    limited = await _failed_login(client, user.email)
+    correct = await client.post(LOGIN, json={"email": user.email, "password": DEFAULT_PASSWORD})
+
+    assert [response.status_code for response in failures] == [401] * attempts
+    assert limited.status_code == 429
+    assert limited.json()["code"] == "RATE_LIMITED"
+    assert 0 < int(limited.headers["Retry-After"]) <= settings.auth_rate_limit_window_sec
+    # До конца окна не проходит и верный пароль
+    assert correct.status_code == 429
+
+
+async def test_successful_login_resets_failure_counter(
+    client: httpx.AsyncClient, create_user: CreateUser, settings: Settings
+) -> None:
+    user = await create_user()
+    attempts = settings.auth_rate_limit_attempts
+
+    for _ in range(attempts - 1):
+        await _failed_login(client, user.email)
+    success = await client.post(LOGIN, json={"email": user.email, "password": DEFAULT_PASSWORD})
+    after_success = [await _failed_login(client, user.email) for _ in range(attempts)]
+
+    assert success.status_code == 200
+    assert [response.status_code for response in after_success] == [401] * attempts
+
+
+async def test_failed_logins_are_counted_per_client_ip(
+    client: httpx.AsyncClient, create_user: CreateUser, settings: Settings
+) -> None:
+    user = await create_user()
+
+    for _ in range(settings.auth_rate_limit_attempts):
+        await _failed_login(client, user.email, ip="203.0.113.7")
+    blocked = await _failed_login(client, user.email, ip="203.0.113.7")
+    other_ip = await _failed_login(client, user.email, ip="198.51.100.1")
+
+    assert (blocked.status_code, other_ip.status_code) == (429, 401)

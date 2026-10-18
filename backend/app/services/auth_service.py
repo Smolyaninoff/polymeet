@@ -21,6 +21,7 @@ from app.core.errors import (
     ValidationAppError,
 )
 from app.core.ids import new_id
+from app.core.rate_limit import LoginRateLimiter
 from app.core.security import (
     INVALID_TOKEN_MESSAGE,
     TokenClaims,
@@ -95,6 +96,11 @@ class AuthService:
         self._users = UserRepository(session)
         self._redis = redis
         self._settings = settings
+        self._login_limiter = LoginRateLimiter(
+            redis,
+            attempts=settings.auth_rate_limit_attempts,
+            window_sec=settings.auth_rate_limit_window_sec,
+        )
 
     async def register(self, *, email: str, password: str, display_name: str) -> AuthTokens:
         email = normalize_email(email)
@@ -117,12 +123,15 @@ class AuthService:
         logger.info("user_registered", user_id=user.id)
         return self._issue_tokens(user)
 
-    async def login(self, *, email: str, password: str) -> AuthTokens:
+    async def login(self, *, email: str, password: str, client_ip: str) -> AuthTokens:
+        await self._login_limiter.check(client_ip)
         user = await self._users.get_by_email(normalize_email(email))
         password_hash = user.password_hash if user else await _dummy_password_hash(self._settings)
         password_ok = await verify_password(password, password_hash)
         if user is None or not password_ok:
+            await self._login_limiter.register_failure(client_ip)
             raise InvalidCredentialsError()
+        await self._login_limiter.reset(client_ip)
         return self._issue_tokens(user)
 
     async def refresh(self, refresh_token: str) -> AuthTokens:

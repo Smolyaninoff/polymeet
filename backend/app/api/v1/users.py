@@ -1,8 +1,8 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import OPTIONAL_AUTH, CurrentUser, OptionalUser
+from app.api.deps import OPTIONAL_AUTH, CurrentUser, OptionalUser, SessionDep
 from app.api.errors import (
     NotFoundError,
     NotImplementedAppError,
@@ -15,8 +15,16 @@ from app.schemas.applications import MyApplicationPage
 from app.schemas.enums import ApplicationStatus
 from app.schemas.meetings import MeetingPage
 from app.schemas.users import PublicUserOut, UserOut
+from app.services.user_service import UserService
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+def get_user_service(session: SessionDep) -> UserService:
+    return UserService(session)
+
+
+UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 
 # Маршруты /users/me... объявлены раньше /users/{user_id}, иначе их перехватит параметр.
 
@@ -25,10 +33,10 @@ router = APIRouter(prefix="/users", tags=["users"])
     "/me",
     summary="Мой профиль",
     description=p95(150),
-    responses=error_responses(UnauthorizedError, NotImplementedAppError),
+    responses=error_responses(UnauthorizedError),
 )
 async def get_me(user: CurrentUser) -> UserOut:
-    raise NotImplementedAppError()
+    return UserOut.model_validate(user)
 
 
 @router.get(
@@ -63,9 +71,7 @@ async def list_my_applications(
     summary="Публичный профиль",
     description=p95(150),
     openapi_extra=OPTIONAL_AUTH,
-    responses=error_responses(
-        ValidationAppError, UnauthorizedError, NotFoundError, NotImplementedAppError
-    ),
+    responses=error_responses(ValidationAppError, UnauthorizedError, NotFoundError),
 )
-async def get_user(user_id: UserId, viewer: OptionalUser) -> PublicUserOut:
-    raise NotImplementedAppError()
+async def get_user(user_id: UserId, viewer: OptionalUser, service: UserServiceDep) -> PublicUserOut:
+    return PublicUserOut.model_validate(await service.get(user_id))
