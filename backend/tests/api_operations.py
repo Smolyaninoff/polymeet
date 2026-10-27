@@ -173,6 +173,7 @@ OPERATIONS = [
         "/api/v1/meetings/1/location",
         "required",
         {"json": {"lat": 60.007, "lon": 30.373}},
+        implemented=True,
     ),
     Operation(
         "apply_to_meeting",

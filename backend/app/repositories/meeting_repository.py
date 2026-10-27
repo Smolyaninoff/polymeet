@@ -88,6 +88,7 @@ class MeetingRepository:
             )
             .where(Meeting.id == meeting_id)
             .with_for_update(of=Meeting)
+            .execution_options(populate_existing=True)
         )
 
     async def list_by_organizer(

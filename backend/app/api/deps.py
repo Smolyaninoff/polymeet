@@ -6,6 +6,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.nominatim import NominatimClient
+from app.core.circuit_breaker import CircuitBreaker
 from app.core.config import Settings
 from app.core.db import get_session
 from app.core.errors import UnauthorizedError
@@ -14,7 +16,8 @@ from app.core.redis import get_redis
 from app.core.security import INVALID_TOKEN_MESSAGE, decode_token, user_id_from_subject
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.services.geocoding_port import GeocodingPort, NullGeocoding
+from app.services.geocoding_port import GeocodingPort, QueuedGeocoding
+from app.services.geocoding_service import GeocodingService
 
 _bearer = HTTPBearer(auto_error=False, description="Access-токен, выданный /auth/login")
 
@@ -80,5 +83,9 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 OptionalUser = Annotated[User | None, Depends(get_current_user_optional)]
 
 
-def get_geocoding() -> GeocodingPort:
-    return NullGeocoding()
+def get_geocoding(request: Request, session: SessionDep, redis: RedisDep) -> GeocodingPort:
+    settings: Settings = request.app.state.settings
+    client: NominatimClient = request.app.state.nominatim_client
+    breaker: CircuitBreaker = request.app.state.geocoder_breaker
+    service = GeocodingService(settings, session, redis, client, breaker)
+    return QueuedGeocoding(service, request)

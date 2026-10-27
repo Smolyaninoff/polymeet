@@ -164,3 +164,22 @@ class MeetingService:
             encode_cursor([items[-1].created_at, items[-1].id]) if len(meetings) > limit else None
         )
         return items, next_cursor
+
+    async def set_location(self, meeting_id: int, actor: User, lat: float, lon: float) -> Meeting:
+        meeting = await self._meetings.get_for_update(meeting_id)
+        if meeting is None:
+            raise NotFoundError("Встреча не найдена")
+        if meeting.organizer_id != actor.id:
+            if meeting.status == MeetingStatus.DRAFT:
+                raise NotFoundError("Встреча не найдена")
+            raise ForbiddenError()
+        if meeting.status in (MeetingStatus.CANCELLED, MeetingStatus.FINISHED):
+            raise InvalidTransitionError()
+        meeting.lat = lat
+        meeting.lon = lon
+        meeting.address_norm = None
+        meeting.geo_status = GeoStatus.MANUAL
+        await self._session.commit()
+        if meeting.status == MeetingStatus.PUBLISHED and self._feed_cache is not None:
+            await self._feed_cache.bump()
+        return meeting

@@ -16,7 +16,6 @@ from app.api.errors import (
     ForbiddenError,
     InvalidTransitionError,
     NotFoundError,
-    NotImplementedAppError,
     UnauthorizedError,
     ValidationAppError,
     error_responses,
@@ -227,10 +226,9 @@ async def update_meeting(
         ForbiddenError,
         NotFoundError,
         InvalidTransitionError,
-        NotImplementedAppError,
     ),
 )
 async def set_meeting_location(
-    meeting_id: MeetingId, payload: LocationIn, user: CurrentUser
+    meeting_id: MeetingId, payload: LocationIn, user: CurrentUser, service: MeetingServiceDep
 ) -> MeetingOut:
-    raise NotImplementedAppError()
+    return to_meeting_out(await service.set_location(meeting_id, user, payload.lat, payload.lon))

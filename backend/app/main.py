@@ -1,19 +1,24 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 import structlog
 from fastapi import FastAPI
+from redis.exceptions import RedisError
 
 from app.api.errors import register_error_handlers
 from app.api.health import router as health_router
 from app.api.openapi import API_DESCRIPTION, OPENAPI_TAGS, install_openapi, operation_id
 from app.api.v1.router import api_router
+from app.clients.nominatim import NominatimClient
+from app.core.circuit_breaker import CircuitBreaker
 from app.core.config import Settings, get_settings
 from app.core.db import create_engine, create_session_factory
 from app.core.logging import configure_logging
 from app.core.metrics import setup_metrics
 from app.core.middleware import RequestContextMiddleware
-from app.core.redis import create_redis
+from app.core.redis import create_arq_pool, create_redis
+from app.core.slot_limiter import SlotLimiter
 
 logger = structlog.get_logger(__name__)
 
@@ -26,13 +31,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine = create_engine(settings.database_url)
         redis = create_redis(settings.redis_url)
+        http = httpx.AsyncClient()
         app.state.engine = engine
         app.state.session_factory = create_session_factory(engine)
         app.state.redis = redis
+        app.state.geocoder_breaker = CircuitBreaker("nominatim", settings, redis)
+        app.state.nominatim_client = NominatimClient(settings, http, SlotLimiter(redis))
+        try:
+            app.state.arq_pool = await create_arq_pool(settings.redis_url)
+        except (RedisError, OSError, TimeoutError) as exc:
+            app.state.arq_pool = None
+            logger.warning("arq_pool_unavailable", error=str(exc))
         logger.info("app_started", env=settings.app_env)
         try:
             yield
         finally:
+            if app.state.arq_pool is not None:
+                await app.state.arq_pool.aclose()
+            await http.aclose()
             await redis.aclose()
             await engine.dispose()
             logger.info("app_stopped")
