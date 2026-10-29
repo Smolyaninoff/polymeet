@@ -2,6 +2,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AppLayout } from "./AppLayout";
 import { RequireAuth } from "@/features/auth/RequireAuth";
 import { FeedPage } from "@/pages/feed/FeedPage";
+import { MeetingPage } from "@/pages/meeting/MeetingPage";
 import { MyEventsPage } from "@/pages/my/MyEventsPage";
 import { ModerationPage } from "@/pages/moderation/ModerationPage";
 import { LoginPage } from "@/pages/auth/LoginPage";
@@ -13,6 +14,7 @@ const router = createBrowserRouter([
     element: <AppLayout />,
     children: [
       { path: "/", element: <FeedPage /> },
+      { path: "/meetings/:id", element: <MeetingPage /> },
       { path: "/login", element: <LoginPage /> },
       { path: "/register", element: <RegisterPage /> },
       {

@@ -42,6 +42,8 @@ export function useMeeting(id: number) {
     queryKey: [MEETING_KEY, id],
     queryFn: () => fetchMeeting(id),
     enabled: !!id,
+    // Пока адрес геокодируется в фоне, карточку перезапрашиваем, чтобы точка появилась сама
+    refetchInterval: (query) => (query.state.data?.geo_status === "pending" ? 3000 : false),
   });
 }
 
@@ -51,6 +53,7 @@ export function useCreateMeeting() {
     mutationFn: createMeeting,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [MEETINGS_KEY] });
+      qc.invalidateQueries({ queryKey: ["my-meetings"] });
     },
   });
 }
@@ -63,6 +66,8 @@ export function useUpdateMeeting() {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: [MEETING_KEY, vars.id] });
       qc.invalidateQueries({ queryKey: [MEETINGS_KEY] });
+      qc.invalidateQueries({ queryKey: ["my-meetings"] });
+      qc.invalidateQueries({ queryKey: ["my-applications"] });
     },
   });
 }

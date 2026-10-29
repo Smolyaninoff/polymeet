@@ -1,65 +1,71 @@
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { ApplicationStatus, DecisionInput } from "@/shared/api/schema";
 import {
-  useInfiniteQuery,
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
-import {
-  fetchMeetings,
-  fetchMeeting,
-  createMeeting,
-  updateMeeting,
-  fetchMeetingMap,
-  type FeedFilters,
+  applyToMeeting,
+  decideApplication,
+  fetchMeetingApplications,
+  fetchMyApplications,
+  withdrawMyApplication,
 } from "./api";
-import type { UpdateMeetingInput } from "@/shared/api/schema";
 
-const MEETINGS_KEY = "meetings";
-const MEETING_KEY = "meeting";
+export const APPLICATIONS_KEY = "applications";
+export const MY_APPLICATIONS_KEY = "my-applications";
 
-export function useMeetingsFeed(filters: FeedFilters) {
+export function useMeetingApplications(
+  meetingId: number,
+  status: ApplicationStatus | undefined,
+  enabled: boolean
+) {
   return useInfiniteQuery({
-    queryKey: [MEETINGS_KEY, filters],
-    queryFn: ({ pageParam }) => fetchMeetings(filters, pageParam),
+    queryKey: [APPLICATIONS_KEY, meetingId, status],
+    queryFn: ({ pageParam }) => fetchMeetingApplications(meetingId, status, pageParam),
     initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+    enabled,
   });
 }
 
-export function useMeetingMap(bbox: string, filters: Omit<FeedFilters, "lat" | "lon" | "radius_km">) {
-  return useQuery({
-    queryKey: [MEETINGS_KEY, "map", bbox, filters],
-    queryFn: () => fetchMeetingMap(bbox, filters),
-    enabled: !!bbox,
+export function useMyApplications() {
+  return useInfiniteQuery({
+    queryKey: [MY_APPLICATIONS_KEY],
+    queryFn: ({ pageParam }) => fetchMyApplications(undefined, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
 }
 
-export function useMeeting(id: number) {
-  return useQuery({
-    queryKey: [MEETING_KEY, id],
-    queryFn: () => fetchMeeting(id),
-    enabled: !!id,
-  });
-}
-
-export function useCreateMeeting() {
+/** После любой операции с заявками меняются счётчики встречи, очередь и мои заявки. */
+function useInvalidateMeeting(meetingId: number) {
   const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: ["meeting", meetingId] });
+    qc.invalidateQueries({ queryKey: ["meetings"] });
+    qc.invalidateQueries({ queryKey: [APPLICATIONS_KEY, meetingId] });
+    qc.invalidateQueries({ queryKey: [MY_APPLICATIONS_KEY] });
+  };
+}
+
+export function useApply(meetingId: number) {
+  const invalidate = useInvalidateMeeting(meetingId);
   return useMutation({
-    mutationFn: createMeeting,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [MEETINGS_KEY] });
-    },
+    mutationFn: (message?: string) => applyToMeeting(meetingId, message),
+    onSettled: invalidate,
   });
 }
 
-export function useUpdateMeeting() {
-  const qc = useQueryClient();
+export function useWithdraw(meetingId: number) {
+  const invalidate = useInvalidateMeeting(meetingId);
   return useMutation({
-    mutationFn: ({ id, input }: { id: number; input: UpdateMeetingInput }) =>
-      updateMeeting(id, input),
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: [MEETING_KEY, vars.id] });
-      qc.invalidateQueries({ queryKey: [MEETINGS_KEY] });
-    },
+    mutationFn: () => withdrawMyApplication(meetingId),
+    onSettled: invalidate,
+  });
+}
+
+export function useDecide(meetingId: number) {
+  const invalidate = useInvalidateMeeting(meetingId);
+  return useMutation({
+    mutationFn: ({ id, decision }: { id: number; decision: DecisionInput["decision"] }) =>
+      decideApplication(id, decision),
+    onSettled: invalidate,
   });
 }

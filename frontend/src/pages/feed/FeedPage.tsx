@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMeetingsFeed } from "@/features/meetings/hooks";
 import { Banner } from "@/widgets/banner/Banner";
 import { FilterSidebar } from "@/widgets/filters/FilterSidebar";
@@ -30,6 +31,7 @@ function buildApiFilters(
 
 
 export function FeedPage() {
+  const navigate = useNavigate();
   const [appliedFilters, setAppliedFilters] = useState<FiltersState | null>(null);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("list");
@@ -122,7 +124,7 @@ export function FeedPage() {
             <MapView
               meetings={visibleMeetings}
               apiKey={import.meta.env.VITE_YMAPS_API_KEY || "YOUR_KEY_HERE"}
-              onMeetingClick={(id) => console.log("clicked", id)}
+              onMeetingClick={(id) => navigate(`/meetings/${id}`)}
             />
           )}
         </section>

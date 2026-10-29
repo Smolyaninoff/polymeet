@@ -1,15 +1,7 @@
-import { Bookmark, MapPin, Users } from "lucide-react";
+import { MapPin, Users } from "lucide-react";
+import { Link } from "react-router-dom";
 import type { MeetingListItem } from "@/shared/api/schema";
-
-// Map category slug to icon/image — adjust to your actual asset paths
-const CATEGORY_IMAGES: Record<string, string> = {
-  lecture: "/lecture.jpg",
-  games: "/gaming.jpg",
-  concert: "/concert.jpg",
-  sport: "/sport.jpg",
-  walk: "/walking.jpg",
-  other: "/others.jpg",
-};
+import { categoryImage, categoryLabel } from "@/features/meetings/labels";
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
@@ -24,12 +16,12 @@ function formatDateTime(iso: string): string {
 
 interface MeetingCardProps {
   meeting: MeetingListItem;
-  onJoin?: (id: number) => void;
 }
 
-export function MeetingCard({ meeting, onJoin }: MeetingCardProps) {
-  const imageUrl = CATEGORY_IMAGES[meeting.category] || "/others.jpg";
+export function MeetingCard({ meeting }: MeetingCardProps) {
+  const imageUrl = categoryImage(meeting.category);
   const isFull = meeting.free_places === 0;
+  const href = `/meetings/${meeting.id}`;
 
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#131a30] transition hover:border-white/20">
@@ -41,11 +33,8 @@ export function MeetingCard({ meeting, onJoin }: MeetingCardProps) {
           className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
         />
         <div className="absolute inset-0 bg-linear-to-t from-[#131a30] to-transparent" />
-        <button className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-black/40 text-white/70 backdrop-blur-sm transition hover:text-white">
-          <Bookmark size={16} />
-        </button>
         <span className="absolute left-3 top-3 rounded-full bg-black/40 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-sm">
-          {meeting.category}
+          {categoryLabel(meeting.category)}
         </span>
         <span className="absolute right-3 bottom-3 text-xs text-white/80">
           {formatDateTime(meeting.starts_at)}
@@ -54,7 +43,11 @@ export function MeetingCard({ meeting, onJoin }: MeetingCardProps) {
 
       {/* Content */}
       <div className="flex flex-1 flex-col p-4">
-        <h3 className="mb-2 font-semibold text-white">{meeting.title}</h3>
+        <h3 className="mb-2 font-semibold text-white">
+          <Link to={href} className="hover:text-blue-300">
+            {meeting.title}
+          </Link>
+        </h3>
 
         <div className="mb-3 flex items-center gap-4 text-xs text-slate-400">
           <span className="flex items-center gap-1">
@@ -73,17 +66,16 @@ export function MeetingCard({ meeting, onJoin }: MeetingCardProps) {
           </span>
         </div>
 
-        <button
-          onClick={() => onJoin?.(meeting.id)}
-          disabled={isFull}
-          className={`mt-auto w-full rounded-lg py-2.5 text-sm font-medium transition ${
+        <Link
+          to={href}
+          className={`mt-auto block w-full rounded-lg py-2.5 text-center text-sm font-medium transition ${
             isFull
-              ? "cursor-not-allowed bg-slate-700 text-slate-400"
+              ? "bg-slate-700 text-slate-300 hover:bg-slate-600"
               : "bg-blue-600 text-white hover:bg-blue-500"
           }`}
         >
-          {isFull ? "Мест нет" : "Подать заявку"}
-        </button>
+          {isFull ? "Мест нет · лист ожидания" : "Подать заявку"}
+        </Link>
       </div>
     </article>
   );

@@ -1,70 +1,56 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from "@/shared/api/client";
+import { apiDelete, apiGet, apiPost } from "@/shared/api/client";
 import type {
-  MeetingPage,
-  MeetingOut,
-  CreateMeetingInput,
-  UpdateMeetingInput,
-  MapMeetingItem,
+  ApplicationOut,
+  ApplicationPage,
+  ApplicationStatus,
+  DecisionInput,
+  MyApplicationPage,
 } from "@/shared/api/schema";
 
-export interface FeedFilters {
-  category?: string;
-  date?: string;
-  q?: string;
-  has_free_places?: boolean;
-  lat?: number;
-  lon?: number;
-  radius_km?: number;
-}
-
-export async function fetchMeetings(
-  filters: FeedFilters,
-  cursor?: string,
-  limit = 20
-): Promise<MeetingPage> {
-  const params = new URLSearchParams();
-  params.set("limit", String(limit));
+function pageQuery(status?: ApplicationStatus, cursor?: string, limit = 20): string {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (status) params.set("status", status);
   if (cursor) params.set("cursor", cursor);
-  if (filters.category) params.set("category", filters.category);
-  if (filters.date) params.set("date", filters.date);
-  if (filters.q) params.set("q", filters.q);
-  if (filters.has_free_places) params.set("has_free_places", "true");
-  if (filters.lat !== undefined) params.set("lat", String(filters.lat));
-  if (filters.lon !== undefined) params.set("lon", String(filters.lon));
-  if (filters.radius_km !== undefined)
-    params.set("radius_km", String(filters.radius_km));
-
-  return apiGet<MeetingPage>(`/meetings?${params.toString()}`);
+  return params.toString();
 }
 
-export async function fetchMeetingMap(
-  bbox: string,
-  filters: Omit<FeedFilters, "lat" | "lon" | "radius_km">
-): Promise<MapMeetingItem[]> {
-  const params = new URLSearchParams();
-  params.set("bbox", bbox);
-  if (filters.category) params.set("category", filters.category);
-  if (filters.date) params.set("date", filters.date);
-  if (filters.has_free_places) params.set("has_free_places", "true");
-
-  return apiGet<MapMeetingItem[]>(`/meetings/map?${params.toString()}`);
+/** Подать заявку. Статус новой заявки: accepted (автоприём), waitlist (мест нет) или pending. */
+export async function applyToMeeting(meetingId: number, message?: string): Promise<ApplicationOut> {
+  const text = message?.trim();
+  return apiPost<ApplicationOut>(
+    `/meetings/${meetingId}/applications`,
+    text ? { message: text } : undefined
+  );
 }
 
-export async function fetchMeeting(id: number): Promise<MeetingOut> {
-  return apiGet<MeetingOut>(`/meetings/${id}`);
+/** Отменить участие; освободившееся место получает первый из листа ожидания. */
+export async function withdrawMyApplication(meetingId: number): Promise<void> {
+  return apiDelete(`/meetings/${meetingId}/applications/me`);
 }
 
-export async function createMeeting(input: CreateMeetingInput): Promise<MeetingOut> {
-  return apiPost<MeetingOut>("/meetings", input);
+/** Решение организатора по заявке. */
+export async function decideApplication(
+  applicationId: number,
+  decision: DecisionInput["decision"]
+): Promise<ApplicationOut> {
+  return apiPost<ApplicationOut>(`/applications/${applicationId}/decision`, { decision });
 }
 
-export async function updateMeeting(
-  id: number,
-  input: UpdateMeetingInput
-): Promise<MeetingOut> {
-  return apiPatch<MeetingOut>(`/meetings/${id}`, input);
+/** Очередь заявок на встречу (только организатор), в порядке подачи. */
+export async function fetchMeetingApplications(
+  meetingId: number,
+  status?: ApplicationStatus,
+  cursor?: string
+): Promise<ApplicationPage> {
+  return apiGet<ApplicationPage>(
+    `/meetings/${meetingId}/applications?${pageQuery(status, cursor, 50)}`
+  );
 }
 
-export async function deleteMeeting(id: number): Promise<void> {
-  return apiDelete(`/meetings/${id}`);
+/** Мои заявки, новые сначала. */
+export async function fetchMyApplications(
+  status?: ApplicationStatus,
+  cursor?: string
+): Promise<MyApplicationPage> {
+  return apiGet<MyApplicationPage>(`/users/me/applications?${pageQuery(status, cursor, 50)}`);
 }
