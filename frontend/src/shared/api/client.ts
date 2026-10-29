@@ -1,125 +1,154 @@
-import { ApiError, type ProblemDetail } from "./schema";
+import { ApiError, type AuthResponse, type ProblemDetail } from "./schema";
 
 const BASE_URL = "/api/v1";
 
-let refreshPromise: Promise<void> | null = null;
+/** Событие окна: сессия закончилась (refresh-токен отозван или просрочен). */
+export const SESSION_EXPIRED_EVENT = "polymeet:session-expired";
 
-function getAccessToken(): string | null {
-  return localStorage.getItem("access_token");
+const ACCESS_KEY = "access_token";
+const REFRESH_KEY = "refresh_token";
+const USER_KEY = "user";
+
+function read(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
-function getRefreshToken(): string | null {
-  return localStorage.getItem("refresh_token");
+function write(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // localStorage недоступен (приватный режим) — сессия живёт до перезагрузки
+  }
 }
 
-function setTokens(access: string, refresh: string): void {
-  localStorage.setItem("access_token", access);
-  localStorage.setItem("refresh_token", refresh);
+export function getAccessToken(): string | null {
+  return read(ACCESS_KEY);
+}
+
+export function getRefreshToken(): string | null {
+  return read(REFRESH_KEY);
+}
+
+export function getStoredUserJson(): string | null {
+  return read(USER_KEY);
+}
+
+export function saveSession(auth: AuthResponse): void {
+  write(ACCESS_KEY, auth.access_token);
+  write(REFRESH_KEY, auth.refresh_token);
+  write(USER_KEY, JSON.stringify(auth.user));
+}
+
+export function saveUser(user: AuthResponse["user"]): void {
+  write(USER_KEY, JSON.stringify(user));
 }
 
 export function clearSession(): void {
-  localStorage.removeItem("access_token");
-  localStorage.removeItem("refresh_token");
-  localStorage.removeItem("user");
+  try {
+    localStorage.removeItem(ACCESS_KEY);
+    localStorage.removeItem(REFRESH_KEY);
+    localStorage.removeItem(USER_KEY);
+  } catch {
+    // нечего очищать
+  }
 }
 
-async function doRefresh(): Promise<void> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) {
-    clearSession();
-    throw new Error("No refresh token");
+async function toApiError(res: Response): Promise<ApiError> {
+  const type = res.headers.get("content-type") ?? "";
+  if (type.includes("json")) {
+    try {
+      return new ApiError((await res.json()) as ProblemDetail);
+    } catch {
+      // тело не разобралось — ниже общий ответ
+    }
   }
+  return new ApiError({
+    type: "about:blank",
+    title: res.statusText,
+    status: res.status,
+    detail:
+      res.status >= 500
+        ? "Сервис временно недоступен, попробуйте позже"
+        : "Не удалось выполнить запрос",
+    code: res.status >= 500 ? "INTERNAL_ERROR" : "HTTP_ERROR",
+    instance: res.url,
+  });
+}
+
+// Refresh-токен одноразовый: при нескольких одновременных 401 обновляет ровно один запрос,
+// остальные ждут его результата.
+let refreshing: Promise<boolean> | null = null;
+
+async function refreshSession(): Promise<boolean> {
+  const refreshToken = read(REFRESH_KEY);
+  if (!refreshToken) return false;
 
   const res = await fetch(`${BASE_URL}/auth/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: refreshToken }),
   });
-
-  if (!res.ok) {
-    clearSession();
-    throw new Error("Refresh failed");
+  if (res.ok) {
+    saveSession((await res.json()) as AuthResponse);
+    return true;
   }
-
-  const data = await res.json();
-  setTokens(data.access_token, data.refresh_token);
-  localStorage.setItem("user", JSON.stringify(data.user));
+  if (res.status === 401) {
+    // Токен отозван или просрочен — сессия закончилась
+    clearSession();
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    return false;
+  }
+  // 503 и прочие сбои: сессию не трогаем, ошибку увидит исходный запрос
+  throw await toApiError(res);
 }
 
-async function request(
-  method: string,
-  path: string,
-  body?: unknown
-): Promise<Response> {
-  const token = getAccessToken();
-
+function send(method: string, path: string, body: unknown): Promise<Response> {
   const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  if (body) headers["Content-Type"] = "application/json";
-
-  let res = await fetch(`${BASE_URL}${path}`, {
+  const token = getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  return fetch(`${BASE_URL}${path}`, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+}
 
-  // 401 and not an auth endpoint → try refresh
-  if (res.status === 401 && !path.startsWith("/auth/")) {
-    if (!refreshPromise) {
-      refreshPromise = doRefresh().finally(() => {
-        refreshPromise = null;
-      });
-    }
+export async function apiRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
+  let res = await send(method, path, body);
 
-    await refreshPromise;
-
-    // Retry once with new token
-    const newToken = getAccessToken();
-    const retryHeaders: Record<string, string> = {};
-    if (newToken) retryHeaders["Authorization"] = `Bearer ${newToken}`;
-    if (body) retryHeaders["Content-Type"] = "application/json";
-
-    res = await fetch(`${BASE_URL}${path}`, {
-      method,
-      headers: retryHeaders,
-      body: body ? JSON.stringify(body) : undefined,
+  if (res.status === 401 && !path.startsWith("/auth/") && read(REFRESH_KEY)) {
+    refreshing ??= refreshSession().finally(() => {
+      refreshing = null;
     });
+    if (await refreshing) {
+      res = await send(method, path, body);
+    }
   }
 
-  return res;
+  if (!res.ok) throw await toApiError(res);
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const res = await request("GET", path);
-  if (!res.ok) {
-    const problem: ProblemDetail = await res.json();
-    throw new ApiError(problem);
-  }
-  return res.json();
+export const apiGet = <T>(path: string) => apiRequest<T>("GET", path);
+export const apiPost = <T>(path: string, body?: unknown) => apiRequest<T>("POST", path, body);
+export const apiPatch = <T>(path: string, body?: unknown) => apiRequest<T>("PATCH", path, body);
+export const apiPut = <T>(path: string, body?: unknown) => apiRequest<T>("PUT", path, body);
+export const apiDelete = (path: string) => apiRequest<void>("DELETE", path);
+
+/** Текст ошибки для пользователя. */
+export function errorMessage(error: unknown, fallback = "Что-то пошло не так"): string {
+  if (error instanceof ApiError) return error.detail || fallback;
+  return fallback;
 }
 
-export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  const res = await request("POST", path, body);
-  if (!res.ok) {
-    const problem: ProblemDetail = await res.json();
-    throw new ApiError(problem);
-  }
-  return res.json();
-}
-
-export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
-  const res = await request("PATCH", path, body);
-  if (!res.ok) {
-    const problem: ProblemDetail = await res.json();
-    throw new ApiError(problem);
-  }
-  return res.json();
-}
-
-export async function apiDelete(path: string): Promise<void> {
-  const res = await request("DELETE", path);
-  if (!res.ok) {
-    const problem: ProblemDetail = await res.json();
-    throw new ApiError(problem);
-  }
+/** Ошибки по полям из `VALIDATION_ERROR`: имя поля запроса → сообщение. */
+export function fieldErrors(error: unknown): Record<string, string> {
+  if (!(error instanceof ApiError) || !error.errors) return {};
+  return Object.fromEntries(error.errors.map((e) => [e.field, e.message]));
 }

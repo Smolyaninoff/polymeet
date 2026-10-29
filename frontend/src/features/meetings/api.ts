@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from "@/shared/api/client";
+import { apiGet, apiPost, apiPatch, apiPut } from "@/shared/api/client";
 import type {
   MeetingPage,
   MeetingOut,
@@ -65,6 +65,10 @@ export async function updateMeeting(
   return apiPatch<MeetingOut>(`/meetings/${id}`, input);
 }
 
-export async function deleteMeeting(id: number): Promise<void> {
-  return apiDelete(`/meetings/${id}`);
+/** Точка на карте вручную (организатор), `geo_status` станет `manual` */
+export async function setMeetingLocation(
+  id: number,
+  location: { lat: number; lon: number }
+): Promise<MeetingOut> {
+  return apiPut<MeetingOut>(`/meetings/${id}/location`, location);
 }

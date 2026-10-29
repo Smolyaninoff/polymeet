@@ -118,7 +118,7 @@ export interface UpdateMeetingInput {
   address_hint?: string | null;
   capacity?: number;
   auto_accept?: boolean;
-  status?: MeetingStatus;
+  status?: "published" | "cancelled";
 }
 
 // === Map ===
@@ -141,7 +141,7 @@ export interface ApplicationOut {
   id: number;
   meeting_id: number;
   status: ApplicationStatus;
-  message: string;
+  message: string | null;
   created_at: string;
   decided_at: string | null;
   user: {
@@ -155,7 +155,7 @@ export interface ApplicationOut {
 export interface MyApplicationItem {
   id: number;
   status: ApplicationStatus;
-  message: string;
+  message: string | null;
   created_at: string;
   decided_at: string | null;
   meeting: {

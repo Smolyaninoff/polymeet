@@ -1,17 +1,29 @@
 import {
   createContext,
-  useContext,
-  useState,
-  useEffect,
   useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
   type ReactNode,
 } from "react";
-import { apiPost, clearSession } from "@/shared/api/client";
+import {
+  SESSION_EXPIRED_EVENT,
+  apiGet,
+  apiPost,
+  clearSession,
+  getAccessToken,
+  getRefreshToken,
+  getStoredUserJson,
+  saveSession,
+  saveUser,
+} from "@/shared/api/client";
 import type { AuthResponse, UserOut } from "@/shared/api/schema";
 import { queryClient } from "@/shared/api/queryClient";
 
 interface AuthContextValue {
   user: UserOut | null;
+  /** Идёт проверка сохранённой сессии при запуске */
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
@@ -19,6 +31,7 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
 /* eslint-disable react-refresh/only-export-components */
 export function useAuth() {
   const ctx = useContext(AuthContext);
@@ -27,91 +40,85 @@ export function useAuth() {
 }
 
 function getStoredUser(): UserOut | null {
-  const raw = localStorage.getItem("user");
-  return raw ? JSON.parse(raw) : null;
-}
-
-function getStoredToken(): string | null {
-  return localStorage.getItem("access_token");
+  const raw = getStoredUserJson();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as UserOut;
+  } catch {
+    return null;
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserOut | null>(getStoredUser);
-  const [isLoading, setIsLoading] = useState(() => !!getStoredToken());
+  const [isLoading, setIsLoading] = useState(() => !!getAccessToken());
 
-  // Validate token on mount
+  // Проверка сохранённой сессии: клиент сам обновит просроченный access-токен
   useEffect(() => {
-    const token = getStoredToken();
-
-    if (!token) {
-      // Schedule state update outside the render phase
-      const timer = setTimeout(() => setIsLoading(false), 0);
-      return () => clearTimeout(timer);
-    }
-
+    if (!getAccessToken()) return;
     let cancelled = false;
-
-    fetch("/api/v1/users/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Invalid token");
-        return res.json();
-      })
-      .then((u: UserOut) => {
-        if (!cancelled) {
-          setUser(u);
-          localStorage.setItem("user", JSON.stringify(u));
-        }
+    apiGet<UserOut>("/users/me")
+      .then((me) => {
+        if (cancelled) return;
+        saveUser(me);
+        setUser(me);
       })
       .catch(() => {
-        if (!cancelled) {
-          clearSession();
-          setUser(null);
-        }
+        if (cancelled) return;
+        // Сессия недействительна — клиент уже очистил её, если refresh не прошёл
+        if (!getAccessToken()) setUser(null);
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
       });
-
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const data = await apiPost<AuthResponse>("/auth/login", {
-      email: email.toLowerCase().trim(),
-      password,
-    });
-    localStorage.setItem("access_token", data.access_token);
-    localStorage.setItem("refresh_token", data.refresh_token);
-    localStorage.setItem("user", JSON.stringify(data.user));
-    setUser(data.user);
+  useEffect(() => {
+    const onExpired = () => {
+      setUser(null);
+      queryClient.clear();
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, []);
+
+  const applySession = useCallback((auth: AuthResponse) => {
+    saveSession(auth);
+    setUser(auth.user);
+    // Персональные данные (my_application и т. п.) запрашиваются заново
+    queryClient.invalidateQueries();
+  }, []);
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      applySession(await apiPost<AuthResponse>("/auth/login", { email: email.trim(), password }));
+    },
+    [applySession]
+  );
 
   const register = useCallback(
     async (email: string, password: string, displayName: string) => {
-      const data = await apiPost<AuthResponse>("/auth/register", {
-        email: email.toLowerCase().trim(),
-        password,
-        display_name: displayName.trim(),
-      });
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("refresh_token", data.refresh_token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-      setUser(data.user);
+      applySession(
+        await apiPost<AuthResponse>("/auth/register", {
+          email: email.trim(),
+          password,
+          display_name: displayName.trim(),
+        })
+      );
     },
-    []
+    [applySession]
   );
 
   const logout = useCallback(async () => {
-    const refreshToken = localStorage.getItem("refresh_token");
+    const refreshToken = getRefreshToken();
     if (refreshToken) {
       try {
         await apiPost("/auth/logout", { refresh_token: refreshToken });
       } catch {
-        // Ignore logout errors
+        // Выход на клиенте важнее: токен всё равно удаляем
       }
     }
     clearSession();
@@ -119,9 +126,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
   }, []);
 
-  return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({ user, isLoading, login, register, logout }),
+    [user, isLoading, login, register, logout]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
