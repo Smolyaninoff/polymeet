@@ -17,12 +17,13 @@ import type { UpdateMeetingInput } from "@/shared/api/schema";
 const MEETINGS_KEY = "meetings";
 const MEETING_KEY = "meeting";
 
-export function useMeetingsFeed(filters: FeedFilters) {
+export function useMeetingsFeed(filters: FeedFilters, enabled = true) {
   return useInfiniteQuery({
     queryKey: [MEETINGS_KEY, filters],
     queryFn: ({ pageParam }) => fetchMeetings(filters, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    enabled,
   });
 }
 

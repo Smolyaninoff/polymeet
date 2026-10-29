@@ -9,26 +9,39 @@ import { MapView } from "@/widgets/mapview/MapView";
 import type { FiltersState } from "@/features/meetings/filters/categories";
 import type { FeedFilters } from "@/features/meetings/api";
 import type { CategoryId } from "@/features/meetings/filters/categories";
+import { defaultFilters } from "@/widgets/filters/useFilters";
+import { useUserLocation, type UserLocation } from "@/features/meetings/useUserLocation";
+
+function selectedCategories(applied: FiltersState | null): CategoryId[] {
+  return Object.entries(applied?.categories ?? {})
+    .filter(([, checked]) => checked)
+    .map(([id]) => id as CategoryId);
+}
+
+/** Радиус применяется, если пользователь сдвинул ползунок со значения по умолчанию. */
+function radiusOf(applied: FiltersState | null): number | undefined {
+  return applied && applied.radiusKm !== defaultFilters.radiusKm ? applied.radiusKm : undefined;
+}
 
 function buildApiFilters(
   applied: FiltersState | null,
-  query: string
+  query: string,
+  location: UserLocation | null
 ): FeedFilters {
   if (!applied) return { q: query || undefined };
-
-  // Extract selected categories from Record<CategoryId, boolean>
-  const selectedCategories = Object.entries(applied.categories || {})
-    .filter(([, checked]) => checked)
-    .map(([id]) => id as CategoryId);
-
+  const categories = selectedCategories(applied);
+  const radius = radiusOf(applied);
   return {
     q: query || undefined,
-    category: selectedCategories.length === 1 ? selectedCategories[0] : undefined,
+    // API принимает одну категорию; несколько выбранных доотфильтровываются на клиенте
+    category: categories.length === 1 ? categories[0] : undefined,
     date: applied.date || undefined,
     has_free_places: applied.minSeats ? applied.minSeats > 0 : undefined,
+    ...(radius !== undefined && location
+      ? { lat: location.lat, lon: location.lon, radius_km: radius }
+      : {}),
   };
 }
-
 
 export function FeedPage() {
   const navigate = useNavigate();
@@ -36,9 +49,13 @@ export function FeedPage() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("list");
 
+  const radius = radiusOf(appliedFilters);
+  const location = useUserLocation(radius !== undefined);
+  const waitingForLocation = radius !== undefined && !location;
+
   const apiFilters = useMemo(
-    () => buildApiFilters(appliedFilters, query),
-    [appliedFilters, query]
+    () => buildApiFilters(appliedFilters, query, location),
+    [appliedFilters, query, location]
   );
 
   const {
@@ -49,7 +66,7 @@ export function FeedPage() {
     isLoading,
     isError,
     error,
-  } = useMeetingsFeed(apiFilters);
+  } = useMeetingsFeed(apiFilters, !waitingForLocation);
 
   const meetings = useMemo(
     () => data?.pages.flatMap((page) => page.items) ?? [],
@@ -59,8 +76,12 @@ export function FeedPage() {
   // Client-side seat filter (API only supports has_free_places boolean)
   const visibleMeetings = useMemo(() => {
     const minSeats = appliedFilters?.minSeats ?? 0;
-    if (minSeats <= 1) return meetings;
-    return meetings.filter((m) => m.free_places >= minSeats);
+    const categories = selectedCategories(appliedFilters);
+    return meetings.filter(
+      (m) =>
+        (minSeats <= 1 || m.free_places >= minSeats) &&
+        (!appliedFilters || categories.length <= 1 || categories.includes(m.category as CategoryId))
+    );
   }, [meetings, appliedFilters]);
 
   return (
@@ -85,7 +106,14 @@ export function FeedPage() {
             </div>
           </div>
 
-          {isLoading && (
+          {radius !== undefined && location && (
+            <p className="mb-3 text-xs text-slate-500">
+              В радиусе {radius} км{" "}
+              {location.source === "gps" ? "от вас" : "от СПбПУ (геолокация недоступна)"}
+            </p>
+          )}
+
+          {(isLoading || waitingForLocation) && (
             <p className="text-center text-slate-500">Загрузка...</p>
           )}
 
