@@ -5,6 +5,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+# Ключ JavaScript API Яндекс Карт попадает в сборку (переменные VITE_* встраиваются в бандл)
+ARG VITE_YMAPS_API_KEY=""
+ENV VITE_YMAPS_API_KEY=$VITE_YMAPS_API_KEY
 RUN npm run build
 
 FROM nginx:alpine

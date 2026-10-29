@@ -60,4 +60,6 @@ function Button({
   )
 }
 
+// Варианты экспортируются вместе с компонентом, как принято в shadcn/ui
+// eslint-disable-next-line react-refresh/only-export-components
 export { Button, buttonVariants }

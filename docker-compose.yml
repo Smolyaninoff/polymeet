@@ -114,6 +114,8 @@ services:
   web:
     build:
       context: ./frontend
+      args:
+        VITE_YMAPS_API_KEY: ${VITE_YMAPS_API_KEY:-}
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-80}:80"

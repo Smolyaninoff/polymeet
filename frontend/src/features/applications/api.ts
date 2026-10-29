@@ -2,7 +2,6 @@ import { apiGet, apiPost, apiPatch, apiDelete } from "@/shared/api/client";
 import type {
   MeetingPage,
   MeetingOut,
-  MeetingListItem,
   CreateMeetingInput,
   UpdateMeetingInput,
   MapMeetingItem,
