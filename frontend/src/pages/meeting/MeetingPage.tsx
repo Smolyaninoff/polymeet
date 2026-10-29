@@ -1,8 +1,13 @@
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { CalendarDays, Clock, MapPin, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/features/auth/context";
-import { useMeeting } from "@/features/meetings/hooks";
+import { useMeeting, useUpdateMeeting } from "@/features/meetings/hooks";
+import type { MeetingFormData } from "@/features/meetings/types";
+import { formFromMeeting } from "@/lib/buildMeetingForm";
+import { toUpdateInput } from "@/lib/meetingPayload";
+import { CreateMeetingModal } from "@/widgets/create-meeting/CreateMeetingModal";
 import {
   GEO_STATUS_HINT,
   MEETING_STATUS,
@@ -23,6 +28,8 @@ export function MeetingPage() {
   const id = Number(useParams().id);
   const { user } = useAuth();
   const { data: meeting, isLoading, error } = useMeeting(Number.isInteger(id) && id > 0 ? id : 0);
+  const update = useUpdateMeeting();
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
   if (!Number.isInteger(id) || id <= 0) return <NotFoundPage text="Встреча не найдена" />;
   if (isLoading) return <p className="py-10 text-center text-sm text-slate-500">Загрузка…</p>;
@@ -38,6 +45,13 @@ export function MeetingPage() {
   }
 
   const isOrganizer = user?.id === meeting.organizer.id;
+  const initialForm = formFromMeeting(meeting);
+
+  const handleEdit = async (form: MeetingFormData) => {
+    const changes = toUpdateInput(form, initialForm);
+    if (Object.keys(changes).length === 0) return;
+    await update.mutateAsync({ id: meeting.id, input: changes });
+  };
   const status = MEETING_STATUS[meeting.status];
   const geoHint = GEO_STATUS_HINT[meeting.geo_status];
   const mapUrl =
@@ -123,13 +137,23 @@ export function MeetingPage() {
       <aside className="w-full shrink-0 space-y-4 lg:w-96">
         {isOrganizer ? (
           <>
-            <OrganizerPanel meeting={meeting} />
+            <OrganizerPanel meeting={meeting} onEdit={() => setIsEditOpen(true)} />
             {meeting.status !== "draft" && <ApplicationsQueue meeting={meeting} />}
           </>
         ) : (
           <ParticipationPanel meeting={meeting} user={user} />
         )}
       </aside>
+
+      {isOrganizer && isEditOpen && (
+        <CreateMeetingModal
+          isOpen
+          mode="edit"
+          initialData={initialForm}
+          onClose={() => setIsEditOpen(false)}
+          onSubmit={handleEdit}
+        />
+      )}
     </div>
   );
 }
