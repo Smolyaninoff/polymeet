@@ -1,5 +1,10 @@
-import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
-import { fetchMe, fetchPublicUser, fetchMyMeetings } from "./api";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { fetchMe, fetchPublicUser, fetchMyMeetings, updateMe } from "./api";
 
 const USER_KEY = "user";
 const MY_MEETINGS_KEY = "my-meetings";
@@ -11,6 +16,17 @@ export function useMe() {
   });
 }
 
+export function useUpdateMe() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: updateMe,
+    onSuccess: (user) => {
+      queryClient.setQueryData([USER_KEY, "me"], user);
+    },
+  });
+}
+
 export function usePublicUser(id: number) {
   return useQuery({
     queryKey: [USER_KEY, id],
@@ -19,11 +35,12 @@ export function usePublicUser(id: number) {
   });
 }
 
-export function useMyMeetings() {
+export function useMyMeetings(enabled = true) {
   return useInfiniteQuery({
     queryKey: [MY_MEETINGS_KEY],
     queryFn: ({ pageParam }) => fetchMyMeetings(pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
+    enabled,
   });
 }

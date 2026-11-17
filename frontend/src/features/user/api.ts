@@ -1,8 +1,17 @@
-import { apiGet } from "@/shared/api/client";
-import type { UserOut, PublicUserOut, MeetingPage } from "@/shared/api/schema";
+import { apiGet, apiPatch } from "@/shared/api/client";
+import type {
+  UserOut,
+  PublicUserOut,
+  MeetingPage,
+  UserUpdateInput,
+} from "@/shared/api/schema";
 
 export async function fetchMe(): Promise<UserOut> {
   return apiGet<UserOut>("/users/me");
+}
+
+export async function updateMe(input: UserUpdateInput): Promise<UserOut> {
+  return apiPatch<UserOut>("/users/me", input);
 }
 
 export async function fetchPublicUser(id: number): Promise<PublicUserOut> {

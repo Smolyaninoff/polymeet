@@ -9,7 +9,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { MyEvent } from "@/features/meetings/mock";
+import type { MyEvent } from "@/features/meetings/types";
 import { CATEGORIES } from "@/features/meetings/filters/categories";
 import { formatMeetingDate } from "@/widgets/meeting-card/format";
 
@@ -62,17 +62,44 @@ export function MyEventCard({
       document.removeEventListener("keydown", handleKey);
     };
   }, [menuOpen]);
+const canChat =
+  event.role === "organizer" || event.status === "approved";
 
-  const menuOptions =
-    event.role === "organizer"
-      ? [
-          { icon: Pencil, label: "Редактировать", onClick: () => onEdit?.(event.id), danger: false },
-          { icon: Trash2, label: "Удалить встречу", onClick: () => onDelete?.(event.id), danger: true },
-        ]
-      : [
-          { icon: XCircle, label: "Отменить заявку", onClick: () => onCancelApplication?.(event.id), danger: true },
-        ];
-
+const menuOptions = [
+  ...(canChat
+    ? [
+        {
+          icon: MessageSquare,
+          label: "Чат встречи",
+          onClick: () => onChat?.(event.id),
+          danger: false,
+        },
+      ]
+    : []),
+  ...(event.role === "organizer"
+    ? [
+        {
+          icon: Pencil,
+          label: "Редактировать",
+          onClick: () => onEdit?.(event.id),
+          danger: false,
+        },
+        {
+          icon: Trash2,
+          label: "Удалить встречу",
+          onClick: () => onDelete?.(event.id),
+          danger: true,
+        },
+      ]
+    : [
+        {
+          icon: XCircle,
+          label: "Отменить заявку",
+          onClick: () => onCancelApplication?.(event.id),
+          danger: true,
+        },
+      ]),
+];
   return (
     <article className="overflow-hidden rounded-xl border border-white/10 bg-[#131a30]">
       {/* Image header */}
@@ -111,30 +138,34 @@ export function MyEventCard({
             <MapPin size={12} />
             {event.address}
           </span>
-          <span className="ml-auto">{event.distanceKm} км</span>
+          {event.distanceKm !== null && (
+            <span className="ml-auto">{event.distanceKm} км</span>
+          )}
         </div>
 
         {/* Actions */}
         <div className="mt-4 flex items-center gap-2">
-          {event.hasRoute && (
-            <button className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-2 text-xs text-slate-300 transition-colors hover:bg-white/10 hover:text-white">
+          {event.lat !== null && event.lng !== null && (
+            <a
+              href={`https://yandex.ru/maps/?rtext=~${event.lat},${event.lng}&rtt=pd`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-2 text-xs text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+            >
               <Route size={13} />
               Маршрут
-            </button>
+            </a>
           )}
 
-          <button
-            onClick={() => onChat?.(event.id)}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-500"
-          >
-            <MessageSquare size={13} />
-            Чат встречи
-            {event.unreadCount > 0 && (
-              <span className="rounded-full bg-white/20 px-1.5 text-[10px]">
-                {event.unreadCount}
-              </span>
-            )}
-          </button>
+          {(event.role === "organizer" || event.status === "approved") && (
+            <button
+              onClick={() => onChat?.(event.id)}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-500"
+            >
+              <MessageSquare size={13} />
+              Чат встречи
+            </button>
+          )}
 
           {/* Dropdown */}
           <div className="relative" ref={menuRef}>

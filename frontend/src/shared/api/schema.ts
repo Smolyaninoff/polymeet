@@ -28,10 +28,32 @@ export interface UserOut {
   email: string;
   display_name: string;
   role: number;
+  university: string;
+  faculty: string;
+  telegram_username: string;
+  bio: string;
+  telegram_notifications: boolean;
+  nearby_notifications: boolean;
+  contacts_accepted_only: boolean;
+  show_location: boolean;
+  notification_radius_km: number;
   attended_count: number;
   marked_count: number;
   attendance_rate: number | null;
   created_at: string;
+}
+
+export interface UserUpdateInput {
+  display_name?: string;
+  university?: string;
+  faculty?: string;
+  telegram_username?: string;
+  bio?: string;
+  telegram_notifications?: boolean;
+  nearby_notifications?: boolean;
+  contacts_accepted_only?: boolean;
+  show_location?: boolean;
+  notification_radius_km?: number;
 }
 
 export interface PublicUserOut {
@@ -176,6 +198,22 @@ export interface ApplicationPage {
 export interface MyApplicationPage {
   items: MyApplicationItem[];
   next_cursor: string | null;
+}
+
+// === Meeting chat ===
+export interface MessageOut {
+  id: number;
+  meeting_id: number;
+  body: string;
+  created_at: string;
+  author: {
+    id: number;
+    display_name: string;
+  };
+}
+
+export interface MessageCreateInput {
+  body: string;
 }
 
 export interface ApplyInput {

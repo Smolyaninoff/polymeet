@@ -10,10 +10,9 @@ import type {
 interface MapViewProps {
   meetings: MeetingListItem[];
   apiKey: string;
-  onMeetingClick?: (id: number) => void;
 }
 
-export function MapView({ meetings, apiKey, onMeetingClick }: MapViewProps) {
+export function MapView({ meetings, apiKey }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<YandexMapInstance | null>(null);
   const clustererRef = useRef<YandexClusterer | null>(null);
@@ -69,13 +68,20 @@ export function MapView({ meetings, apiKey, onMeetingClick }: MapViewProps) {
           },
           { preset: "islands#blueDotIcon" }
         );
-        pm.events.add("click", () => onMeetingClick?.(m.id));
         return pm;
       });
 
     clustererRef.current.add(placemarks);
     mapRef.current.geoObjects.add(clustererRef.current);
-  }, [ready, meetings, onMeetingClick]);
+  }, [ready, meetings]);
+
+  if (!apiKey) {
+    return (
+      <div className="grid h-125 w-full place-items-center rounded-xl border border-white/10 p-6 text-center text-sm text-slate-400">
+        Для отображения карты укажите VITE_YMAPS_API_KEY.
+      </div>
+    );
+  }
 
   return (
     <div

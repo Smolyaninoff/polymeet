@@ -1,4 +1,4 @@
-import type { MyEvent, UserRole } from "../features/meetings/mock";
+import type { MyEvent, UserRole } from "../features/meetings/types";
 
 /** Internal: is this event in the past or terminal? */
 function isHistorical(event: MyEvent, now = new Date()): boolean {

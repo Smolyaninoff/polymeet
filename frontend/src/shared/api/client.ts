@@ -104,6 +104,7 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
     const problem: ProblemDetail = await res.json();
     throw new ApiError(problem);
   }
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 

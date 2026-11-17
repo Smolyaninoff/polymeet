@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/features/auth/context";
 import { useMeetingsFeed } from "@/features/meetings/hooks";
 import { Banner } from "@/widgets/banner/Banner";
 import { FilterSidebar } from "@/widgets/filters/FilterSidebar";
@@ -8,6 +10,7 @@ import { MapView } from "@/widgets/mapview/MapView";
 import type { FiltersState } from "@/features/meetings/filters/categories";
 import type { FeedFilters } from "@/features/meetings/api";
 import type { CategoryId } from "@/features/meetings/filters/categories";
+import { useApplyToMeeting,useMyApplications  } from "@/features/applications/hooks";
 
 function buildApiFilters(
   applied: FiltersState | null,
@@ -30,6 +33,8 @@ function buildApiFilters(
 
 
 export function FeedPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [appliedFilters, setAppliedFilters] = useState<FiltersState | null>(null);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("list");
@@ -60,7 +65,57 @@ export function FeedPage() {
     if (minSeats <= 1) return meetings;
     return meetings.filter((m) => m.free_places >= minSeats);
   }, [meetings, appliedFilters]);
+const applyMutation = useApplyToMeeting();
+const applicationsQuery = useMyApplications(Boolean(user));
 
+const applicationStatuses = useMemo(() => {
+  const applications =
+    applicationsQuery.data?.pages.flatMap((page) => page.items) ??
+    [];
+
+  return new Map(
+    applications.map(
+      (application) =>
+        [
+          application.meeting.id,
+          application.status,
+        ] as const
+    )
+  );
+}, [applicationsQuery.data]);
+const handleJoinMeeting = (meetingId: number) => {
+  if (!user) {
+    navigate("/auth", { state: { from: "/" } });
+    return;
+  }
+
+  applyMutation.mutate(
+    {
+      meetingId,
+      input: {},
+    },
+    {
+      onSuccess: (application) => {
+        if (application.status === "accepted") {
+          alert("Вы приняты на встречу!");
+        } else if (application.status === "waitlist") {
+          alert("Вы добавлены в лист ожидания.");
+        } else {
+          alert("Заявка отправлена организатору.");
+        }
+      },
+      onError: (error) => {
+        console.error("Application error:", error);
+
+        alert(
+          error instanceof Error
+            ? error.message
+            : "Не удалось подать заявку"
+        );
+      },
+    }
+  );
+};
   return (
     <div className="flex flex-col gap-6 lg:flex-row">
       <aside className="w-full shrink-0 lg:w-75">
@@ -103,7 +158,13 @@ export function FeedPage() {
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {visibleMeetings.map((meeting) => (
-                  <MeetingCard key={meeting.id} meeting={meeting} />
+                  <MeetingCard key={meeting.id} meeting={meeting} applicationStatus={applicationStatuses.get(meeting.id)}
+                    isJoining={
+                      applyMutation.isPending &&
+                      applyMutation.variables?.meetingId === meeting.id
+                    }
+                    onJoin={handleJoinMeeting}
+                  />
                 ))}
               </div>
               {hasNextPage && (
@@ -121,8 +182,7 @@ export function FeedPage() {
          {view === "map" && (
             <MapView
               meetings={visibleMeetings}
-              apiKey={import.meta.env.VITE_YMAPS_API_KEY || "YOUR_KEY_HERE"}
-              onMeetingClick={(id) => console.log("clicked", id)}
+              apiKey={import.meta.env.VITE_YMAPS_API_KEY ?? ""}
             />
           )}
         </section>
