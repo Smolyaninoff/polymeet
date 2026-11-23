@@ -16,7 +16,7 @@ from app.api.v1.params import Cursor, PageLimit, UserId, p95
 from app.schemas.applications import MyApplicationPage
 from app.schemas.enums import ApplicationStatus
 from app.schemas.meetings import MeetingPage
-from app.schemas.users import PublicUserOut, UserOut
+from app.schemas.users import PublicUserOut, UserOut, UserUpdate
 from app.services.user_service import UserService
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -39,6 +39,12 @@ UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 )
 async def get_me(user: CurrentUser) -> UserOut:
     return UserOut.model_validate(user)
+
+
+@router.patch("/me", summary="Изменить профиль")
+async def update_me(payload: UserUpdate, user: CurrentUser, service: UserServiceDep) -> UserOut:
+    updated = await service.update(user, payload.model_dump(exclude_unset=True))
+    return UserOut.model_validate(updated)
 
 
 @router.get(

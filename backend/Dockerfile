@@ -21,7 +21,7 @@ RUN python -c "import tomllib; d = tomllib.load(open('pyproject.toml', 'rb')); \
 print('\n'.join(d['project']['optional-dependencies']['dev']))" > /tmp/requirements-dev.txt \
     && pip install -r /tmp/requirements-dev.txt \
     && rm /tmp/requirements-dev.txt
-COPY --chown=app:app alembic.ini gunicorn.conf.py ./
+COPY --chown=app:app alembic.ini gunicorn.conf.py openapi.json ./
 COPY --chown=app:app migrations ./migrations
 COPY --chown=app:app app ./app
 COPY --chown=app:app scripts ./scripts

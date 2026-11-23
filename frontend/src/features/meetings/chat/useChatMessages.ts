@@ -1,27 +1,31 @@
-import { useState, useCallback } from "react";
-import { MOCK_MESSAGES } from "../mock";
-import type { ChatMessage } from "../mock";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost } from "@/shared/api/client";
+
+export interface ChatMessage {
+  id: number;
+  author_id: number;
+  author_name: string;
+  body: string;
+  created_at: string;
+}
 
 export function useChatMessages(meetingId: string) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    return MOCK_MESSAGES[meetingId] ?? [];
+  const queryClient = useQueryClient();
+  const key = ["chat", meetingId];
+  const query = useQuery({
+    queryKey: key,
+    queryFn: () => apiGet<ChatMessage[]>(`/meetings/${meetingId}/messages`),
+    refetchInterval: 5000,
   });
-
-  const sendMessage = useCallback(
-    (text: string) => {
-      const newMsg: ChatMessage = {
-        id: `msg-${Date.now()}`,
-        meetingId,
-        authorId: "me",
-        authorName: "GR",
-        text: text.trim(),
-        sentAt: new Date().toISOString(),
-      };
-
-      setMessages((prev) => [...prev, newMsg]);
-    },
-    [meetingId]
-  );
-
-  return { messages, sendMessage };
+  const mutation = useMutation({
+    mutationFn: (body: string) => apiPost<ChatMessage>(`/meetings/${meetingId}/messages`, { body }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: key }),
+  });
+  return {
+    messages: query.data ?? [],
+    isLoading: query.isLoading,
+    isSending: mutation.isPending,
+    error: query.error ?? mutation.error,
+    sendMessage: (text: string) => mutation.mutateAsync(text),
+  };
 }

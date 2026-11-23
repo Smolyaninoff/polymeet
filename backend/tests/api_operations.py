@@ -33,6 +33,41 @@ class Operation:
 
 OPERATIONS = [
     Operation(
+        "change_password",
+        "POST",
+        "/api/v1/auth/change-password",
+        "/api/v1/auth/change-password",
+        "required",
+        {"json": {"current_password": "old-password", "new_password": "new-password"}},
+        implemented=True,
+    ),
+    Operation(
+        "update_me",
+        "PATCH",
+        "/api/v1/users/me",
+        "/api/v1/users/me",
+        "required",
+        {"json": {"display_name": "Имя"}},
+        implemented=True,
+    ),
+    Operation(
+        "list_chat_messages",
+        "GET",
+        "/api/v1/meetings/{meeting_id}/messages",
+        "/api/v1/meetings/1/messages",
+        "required",
+        implemented=True,
+    ),
+    Operation(
+        "send_chat_message",
+        "POST",
+        "/api/v1/meetings/{meeting_id}/messages",
+        "/api/v1/meetings/1/messages",
+        "required",
+        {"json": {"body": "Привет"}},
+        implemented=True,
+    ),
+    Operation(
         "register",
         "POST",
         "/api/v1/auth/register",

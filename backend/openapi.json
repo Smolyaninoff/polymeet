@@ -218,6 +218,28 @@
         "title": "CategoryOut",
         "type": "object"
       },
+      "ChangePasswordIn": {
+        "properties": {
+          "current_password": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "ChangePasswordIn",
+        "type": "object"
+      },
       "DecisionIn": {
         "properties": {
           "decision": {
@@ -840,6 +862,60 @@
         "title": "MeetingUpdate",
         "type": "object"
       },
+      "MessageIn": {
+        "properties": {
+          "body": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "MessageIn",
+        "type": "object"
+      },
+      "MessageOut": {
+        "properties": {
+          "author_id": {
+            "title": "Author Id",
+            "type": "integer"
+          },
+          "author_name": {
+            "title": "Author Name",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "meeting_id": {
+            "title": "Meeting Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "meeting_id",
+          "author_id",
+          "author_name",
+          "body",
+          "created_at"
+        ],
+        "title": "MessageOut",
+        "type": "object"
+      },
       "MyApplicationItem": {
         "properties": {
           "created_at": {
@@ -1168,6 +1244,14 @@
             "title": "Attended Count",
             "type": "integer"
           },
+          "bio": {
+            "title": "Bio",
+            "type": "string"
+          },
+          "contacts_accepted_only": {
+            "title": "Contacts Accepted Only",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -1181,6 +1265,10 @@
             "title": "Email",
             "type": "string"
           },
+          "faculty": {
+            "title": "Faculty",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -1190,16 +1278,49 @@
             "title": "Marked Count",
             "type": "integer"
           },
+          "nearby_notifications": {
+            "title": "Nearby Notifications",
+            "type": "boolean"
+          },
+          "notification_radius_km": {
+            "title": "Notification Radius Km",
+            "type": "integer"
+          },
           "role": {
             "description": "Роль: 0 — обычный пользователь",
             "title": "Role",
             "type": "integer"
+          },
+          "show_location": {
+            "title": "Show Location",
+            "type": "boolean"
+          },
+          "telegram_notifications": {
+            "title": "Telegram Notifications",
+            "type": "boolean"
+          },
+          "telegram_username": {
+            "title": "Telegram Username",
+            "type": "string"
+          },
+          "university": {
+            "title": "University",
+            "type": "string"
           }
         },
         "required": [
           "id",
           "email",
           "display_name",
+          "university",
+          "faculty",
+          "telegram_username",
+          "bio",
+          "telegram_notifications",
+          "nearby_notifications",
+          "contacts_accepted_only",
+          "show_location",
+          "notification_radius_km",
           "role",
           "attended_count",
           "marked_count",
@@ -1207,6 +1328,130 @@
           "created_at"
         ],
         "title": "UserOut",
+        "type": "object"
+      },
+      "UserUpdate": {
+        "properties": {
+          "bio": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bio"
+          },
+          "contacts_accepted_only": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contacts Accepted Only"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "faculty": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Faculty"
+          },
+          "nearby_notifications": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nearby Notifications"
+          },
+          "notification_radius_km": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notification Radius Km"
+          },
+          "show_location": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Location"
+          },
+          "telegram_notifications": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram Notifications"
+          },
+          "telegram_username": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram Username"
+          },
+          "university": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "University"
+          }
+        },
+        "title": "UserUpdate",
         "type": "object"
       }
     },
@@ -1323,6 +1568,35 @@
         "summary": "Принять или отклонить заявку",
         "tags": [
           "applications"
+        ]
+      }
+    },
+    "/api/v1/auth/change-password": {
+      "post": {
+        "operationId": "change_password",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Change Password",
+        "tags": [
+          "auth"
         ]
       }
     },
@@ -2586,6 +2860,92 @@
         ]
       }
     },
+    "/api/v1/meetings/{meeting_id}/messages": {
+      "get": {
+        "operationId": "list_chat_messages",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "title": "Meeting Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MessageOut"
+                  },
+                  "title": "Response List Chat Messages",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Chat Messages",
+        "tags": [
+          "chat"
+        ]
+      },
+      "post": {
+        "operationId": "send_chat_message",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "title": "Meeting Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Send Chat Message",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
     "/api/v1/users/me": {
       "get": {
         "description": "Целевое время ответа: p95 ≤ 150 мс.",
@@ -2618,6 +2978,40 @@
           }
         ],
         "summary": "Мой профиль",
+        "tags": [
+          "users"
+        ]
+      },
+      "patch": {
+        "operationId": "update_me",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Изменить профиль",
         "tags": [
           "users"
         ]

@@ -15,6 +15,9 @@ import { useWithdrawApplication } from "@/features/applications/hooks";
 
 import { FilterSidebar } from "@/widgets/filters/FilterSidebar";
 import { MyEventCard } from "@/widgets/my-event-card/MyEventCard";
+import { ApplicationsDialog } from "@/widgets/applications/ApplicationsDialog";
+import { CreateMeetingModal } from "@/widgets/create-meeting/CreateMeetingModal";
+import { useMeeting } from "@/features/meetings/hooks";
 import { ChatSheet } from "@/widgets/chat/ChatSheet";
 
 import { useMyEvents } from "./useMyEvents";
@@ -42,6 +45,9 @@ export function MyEventsPage() {
   const [tab, setTab] = useState<MainTab>("participant");
   const [subFilter, setSubFilter] = useState<SubFilter>("all");
   const [filters, setFilters] = useState<FiltersState | null>(null);
+  const [applicationsId, setApplicationsId] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const editing = useMeeting(Number(editId));
   const [chatMeetingId, setChatMeetingId] = useState<string | null>(null);
 
   const events = useMemo(
@@ -199,6 +205,8 @@ export function MyEventsPage() {
                 key={`${event.role}-${event.id}`}
                 event={event}
                 onChat={setChatMeetingId}
+                onApplications={setApplicationsId}
+                onEdit={setEditId}
                 onDelete={cancelMeeting}
                 onCancelApplication={cancelApplication}
               />
@@ -215,6 +223,10 @@ export function MyEventsPage() {
           )}
       </main>
 
+      {applicationsId && <ApplicationsDialog meetingId={Number(applicationsId)} onClose={() => setApplicationsId(null)} />}
+      {editId && editing.data && <CreateMeetingModal key={editId} isOpen mode="edit" onClose={() => setEditId(null)}
+        initialData={{ title: editing.data.title, categoryId: editing.data.category as import("@/features/meetings/filters/categories").CategoryId, description: editing.data.description, date: editing.data.starts_at, maxSeats: editing.data.capacity, address: editing.data.address }}
+        onSubmit={async (data) => { await updateMeetingMutation.mutateAsync({ id: Number(editId), input: { title: data.title.trim(), description: data.description.trim(), category: data.categoryId, starts_at: new Date(data.date).toISOString(), capacity: data.maxSeats, address: data.address.trim() } }); await refreshEvents(); }} />}
       <ChatSheet
         meetingId={chatMeetingId}
         isOpen={chatMeetingId !== null}

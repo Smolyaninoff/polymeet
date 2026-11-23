@@ -1,0 +1,102 @@
+x-test-env: &test-env
+  APP_ENV: test
+  DATABASE_URL: postgresql+asyncpg://polymeet:polymeet@db:5432/polymeet_e2e
+  REDIS_URL: redis://redis:6379/1
+  JWT_SECRET: test-only-jwt-secret-0123456789abcdef
+  ARGON2_TIME_COST: 1
+  ARGON2_MEMORY_COST: 8
+  ARGON2_PARALLELISM: 1
+  GEOCODER_BASE_URL: http://fake-nominatim:8080
+  GEOCODER_RPS: 2
+  GEOCODER_RETRIES: 0
+  GEOCODER_TIMEOUT_SEC: 1.5
+  GEO_RETRY_DELAYS_SEC: 2,2,2
+  CB_OPEN_SECONDS: 5
+  CB_FAIL_MAX: 3
+
+x-test-build: &test-build
+  context: ./backend
+  target: dev
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: polymeet
+      POSTGRES_PASSWORD: polymeet
+      POSTGRES_DB: polymeet_it
+    tmpfs: /var/lib/postgresql/data
+    volumes:
+      - ./deploy/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U polymeet -d polymeet_it"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    tmpfs: /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  fake-nominatim:
+    build: *test-build
+    command: ["uvicorn", "tests.fakes.nominatim.app:app", "--host", "0.0.0.0", "--port", "8080"]
+  migrate:
+    build: *test-build
+    command: ["alembic", "upgrade", "head"]
+    environment: *test-env
+    depends_on:
+      db:
+        condition: service_healthy
+  api:
+    build: *test-build
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: *test-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
+      interval: 3s
+      timeout: 4s
+      retries: 30
+  worker:
+    build: *test-build
+    command: ["arq", "app.workers.settings.WorkerSettings"]
+    environment: *test-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      fake-nominatim:
+        condition: service_started
+  tests:
+    build: *test-build
+    user: root
+    command: ["bash", "scripts/run_tests.sh"]
+    environment:
+      TEST_DATABASE_URL: postgresql+asyncpg://polymeet:polymeet@db:5432/polymeet_it
+      TEST_REDIS_URL: redis://redis:6379/0
+      E2E_API: http://api:8000
+      E2E_FAKE_GEO: http://fake-nominatim:8080
+      E2E_REDIS: redis://redis:6379/1
+    volumes:
+      - ./reports:/reports
+    depends_on:
+      api:
+        condition: service_healthy
+      worker:
+        condition: service_started
+  frontend-tests:
+    build:
+      context: ./frontend
+      target: build
+    command: ["npm", "test"]
+    volumes:
+      - ./reports:/reports

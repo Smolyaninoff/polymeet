@@ -51,3 +51,49 @@ async def test_profile_of_missing_user_is_not_found(
 
     assert response.status_code == 404
     assert response.json()["code"] == "NOT_FOUND"
+
+
+async def test_profile_update_is_persisted_and_private(
+    client: httpx.AsyncClient, create_user: CreateUser, auth_headers: AuthHeaders
+) -> None:
+    user = await create_user()
+    headers = auth_headers(user)
+    updated = await client.patch(
+        "/api/v1/users/me",
+        headers=headers,
+        json={"display_name": "Новое имя", "university": "Политех", "show_location": True},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["university"] == "Политех"
+    assert (await client.get("/api/v1/users/me", headers=headers)).json()["show_location"] is True
+    assert "university" not in (await client.get(f"/api/v1/users/{user.id}")).json()
+    assert (
+        await client.patch("/api/v1/users/me", json={"display_name": "Чужое"})
+    ).status_code == 401
+
+
+async def test_change_password_requires_current_password(
+    client: httpx.AsyncClient, create_user: CreateUser, auth_headers: AuthHeaders
+) -> None:
+    user = await create_user(email="change@example.com", password="old-password-123")
+    path = "/api/v1/auth/change-password"
+    wrong = await client.post(
+        path,
+        headers=auth_headers(user),
+        json={"current_password": "wrong", "new_password": "new-password-456"},
+    )
+    assert wrong.status_code == 401
+    changed = await client.post(
+        path,
+        headers=auth_headers(user),
+        json={"current_password": "old-password-123", "new_password": "new-password-456"},
+    )
+    assert changed.status_code == 204, changed.text
+    old_login = await client.post(
+        "/api/v1/auth/login", json={"email": user.email, "password": "old-password-123"}
+    )
+    new_login = await client.post(
+        "/api/v1/auth/login", json={"email": user.email, "password": "new-password-456"}
+    )
+    assert old_login.status_code == 401
+    assert new_login.status_code == 200
