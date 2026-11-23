@@ -17,6 +17,7 @@ interface MyEventCardProps {
   event: MyEvent;
   onChat?: (id: string) => void;
   onEdit?: (id: string) => void;
+  onApplications?: (id: string) => void;
   onDelete?: (id: string) => void;
   onCancelApplication?: (id: string) => void;
 }
@@ -33,6 +34,7 @@ export function MyEventCard({
   event,
   onChat,
   onEdit,
+  onApplications,
   onDelete,
   onCancelApplication,
 }: MyEventCardProps) {
@@ -78,6 +80,7 @@ const menuOptions = [
     : []),
   ...(event.role === "organizer"
     ? [
+        { icon: MessageSquare, label: "Заявки", onClick: () => onApplications?.(event.id), danger: false },
         {
           icon: Pencil,
           label: "Редактировать",
@@ -86,7 +89,7 @@ const menuOptions = [
         },
         {
           icon: Trash2,
-          label: "Удалить встречу",
+          label: "Отменить встречу",
           onClick: () => onDelete?.(event.id),
           danger: true,
         },

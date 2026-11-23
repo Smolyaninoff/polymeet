@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { OpenMap } from "./OpenMap";
 import { useYandexMaps } from "./useYandexMaps";
 import type { MeetingListItem } from "@/shared/api/schema";
 import type {
@@ -12,7 +13,17 @@ interface MapViewProps {
   apiKey: string;
 }
 
-export function MapView({ meetings, apiKey }: MapViewProps) {
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[character] ?? character);
+}
+
+export function MapView(props: MapViewProps) {
+  return props.apiKey ? <YandexMap {...props} /> : <OpenMap meetings={props.meetings} />;
+}
+
+function YandexMap({ meetings, apiKey }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<YandexMapInstance | null>(null);
   const clustererRef = useRef<YandexClusterer | null>(null);
@@ -64,7 +75,7 @@ export function MapView({ meetings, apiKey }: MapViewProps) {
           [m.lat, m.lon],
           {
             hintContent: m.title,
-            balloonContent: `<strong>${m.title}</strong><br/>${m.address}`,
+            balloonContent: `<strong>${escapeHtml(m.title)}</strong><br/>${escapeHtml(m.address)}`,
           },
           { preset: "islands#blueDotIcon" }
         );

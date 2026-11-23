@@ -50,7 +50,7 @@ export function ChatSheet({ meetingId, isOpen, onClose }: ChatSheetProps) {
         </div>
 
         <div className="flex-1 overflow-hidden">
-          <ChatContent meetingId={meetingId} />
+          <ChatContent key={meetingId} meetingId={meetingId} />
         </div>
       </section>
     </>

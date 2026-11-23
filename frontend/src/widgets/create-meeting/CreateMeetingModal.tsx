@@ -10,7 +10,7 @@ import type { ValidationErrors } from "@/lib/validateMeetingForm";
 interface CreateMeetingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: MeetingFormData) => void;
+  onSubmit: (data: MeetingFormData) => Promise<void>;
   mode: "create" | "edit";
   initialData?: Partial<MeetingFormData>;
 }
@@ -24,6 +24,8 @@ export function CreateMeetingModal({
 }: CreateMeetingModalProps) {
   const [form, setForm] = useState(() => buildMeetingForm(mode, initialData));
   const [errors, setErrors] = useState<ValidationErrors>({});
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   // Escape to close
   useEffect(() => {
@@ -48,14 +50,22 @@ export function CreateMeetingModal({
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const validation = validateMeetingForm(form);
     if (Object.keys(validation).length > 0) {
       setErrors(validation);
       return;
     }
-    onSubmit({ ...form });
-    onClose();
+    setSubmitError("");
+    setSubmitting(true);
+    try {
+      await onSubmit({ ...form });
+      onClose();
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Не удалось сохранить встречу");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -85,7 +95,7 @@ export function CreateMeetingModal({
               required
               value={form.title}
               onChange={(e) => update({ title: e.target.value })}
-              placeholder="Напр.: Поход на лекцию по ИИ"
+              placeholder="Напр.: Вечер настольных игр"
               error={errors.title}
             />
 
@@ -116,9 +126,10 @@ export function CreateMeetingModal({
                 label="Макс. мест"
                 required
                 type="number"
-                min={1}
+                min={2}
+                max={100}
                 value={form.maxSeats}
-                onChange={(e) => update({ maxSeats: Math.max(1, Number(e.target.value)) })}
+                onChange={(e) => update({ maxSeats: Number(e.target.value) })}
               />
             </div>
 
@@ -132,6 +143,7 @@ export function CreateMeetingModal({
             />
           </div>
 
+          {submitError && <p role="alert" className="px-6 pb-2 text-sm text-red-400">{submitError}</p>}
           {/* Footer */}
           <div className="flex items-center gap-3 border-t border-white/10 px-6 py-4">
             <button
@@ -141,7 +153,8 @@ export function CreateMeetingModal({
               Отмена
             </button>
             <button
-              onClick={handleSubmit}
+              onClick={() => void handleSubmit()}
+              disabled={submitting}
               className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-500"
             >
               {mode === "create" ? "Создать встречу" : "Сохранить"}

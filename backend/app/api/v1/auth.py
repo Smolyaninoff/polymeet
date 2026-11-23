@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import ClientIp, RedisDep, SessionDep, SettingsDep
+from app.api.deps import ClientIp, CurrentUser, RedisDep, SessionDep, SettingsDep
 from app.api.errors import (
     DependencyUnavailableError,
     EmailTakenError,
@@ -13,7 +13,7 @@ from app.api.errors import (
     error_responses,
 )
 from app.api.v1.params import p95
-from app.schemas.auth import AuthResponse, LoginIn, RefreshIn, RegisterIn
+from app.schemas.auth import AuthResponse, ChangePasswordIn, LoginIn, RefreshIn, RegisterIn
 from app.schemas.users import UserOut
 from app.services.auth_service import AuthService, AuthTokens
 
@@ -91,3 +91,10 @@ async def refresh(payload: RefreshIn, service: AuthServiceDep) -> AuthResponse:
 )
 async def logout(payload: RefreshIn, service: AuthServiceDep) -> None:
     await service.logout(payload.refresh_token)
+
+
+@router.post("/change-password", status_code=204)
+async def change_password(
+    payload: ChangePasswordIn, user: CurrentUser, service: AuthServiceDep
+) -> None:
+    await service.change_password(user, payload.current_password, payload.new_password)
