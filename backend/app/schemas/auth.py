@@ -30,3 +30,8 @@ class AuthResponse(BaseModel):
     token_type: Literal["bearer"]
     expires_in: int = Field(description="Срок жизни access-токена, секунды", examples=[900])
     user: UserOut
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: Annotated[str, Field(min_length=1, max_length=128)]
+    new_password: Password

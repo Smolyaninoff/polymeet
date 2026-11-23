@@ -2,6 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     Identity,
@@ -9,6 +10,7 @@ from sqlalchemy import (
     SmallInteger,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import CITEXT
 from sqlalchemy.orm import Mapped, mapped_column
@@ -29,6 +31,15 @@ class User(Base):
     email: Mapped[str] = mapped_column(CITEXT, unique=True)
     password_hash: Mapped[str] = mapped_column(Text)
     display_name: Mapped[str] = mapped_column(Text)
+    university: Mapped[str] = mapped_column(Text, server_default="")
+    faculty: Mapped[str] = mapped_column(Text, server_default="")
+    telegram_username: Mapped[str] = mapped_column(Text, server_default="")
+    bio: Mapped[str] = mapped_column(Text, server_default="")
+    telegram_notifications: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    nearby_notifications: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    contacts_accepted_only: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    show_location: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    notification_radius_km: Mapped[int] = mapped_column(Integer, server_default="10")
     role: Mapped[int] = mapped_column(SmallInteger, server_default="0")
     # Надёжность участника (README, ER): на скольких отмеченных встречах он был.
     # Отметка явки в эту фазу не входит, счётчики пока остаются нулевыми.

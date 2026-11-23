@@ -15,7 +15,6 @@ export function AppLayout() {
   const updateMeetingMutation = useUpdateMeeting();
 
   const handleCreate = async (data: MeetingFormData) => {
-    try {
       // 1. Save the meeting in the backend.
       const createdMeeting = await createMeetingMutation.mutateAsync({
         title: data.title.trim(),
@@ -35,15 +34,7 @@ export function AppLayout() {
           status: "published",
         },
       });
-    } catch (error) {
-      console.error("Failed to create meeting:", error);
 
-      alert(
-        error instanceof Error
-          ? `Не удалось создать встречу: ${error.message}`
-          : "Не удалось создать встречу"
-      );
-    }
   };
 
   return (

@@ -37,11 +37,13 @@ export function FeedPage() {
   const { user } = useAuth();
   const [appliedFilters, setAppliedFilters] = useState<FiltersState | null>(null);
   const [query, setQuery] = useState("");
+  const [position, setPosition] = useState<{ lat: number; lon: number } | null>(null);
+  const [locationError, setLocationError] = useState("");
   const [view, setView] = useState<ViewMode>("list");
 
   const apiFilters = useMemo(
-    () => buildApiFilters(appliedFilters, query),
-    [appliedFilters, query]
+    () => ({ ...buildApiFilters(appliedFilters, query), ...(appliedFilters && position ? { ...position, radius_km: appliedFilters.radiusKm } : {}) }),
+    [appliedFilters, query, position]
   );
 
   const {
@@ -62,8 +64,7 @@ export function FeedPage() {
   // Client-side seat filter (API only supports has_free_places boolean)
   const visibleMeetings = useMemo(() => {
     const minSeats = appliedFilters?.minSeats ?? 0;
-    if (minSeats <= 1) return meetings;
-    return meetings.filter((m) => m.free_places >= minSeats);
+    return meetings.filter((m) => m.free_places >= minSeats && (!appliedFilters || appliedFilters.categories[m.category as CategoryId]));
   }, [meetings, appliedFilters]);
 const applyMutation = useApplyToMeeting();
 const applicationsQuery = useMyApplications(Boolean(user));
@@ -116,10 +117,24 @@ const handleJoinMeeting = (meetingId: number) => {
     }
   );
 };
+  const applyFilters = (filters: FiltersState) => {
+    setAppliedFilters(filters);
+    setPosition(null);
+    if (!navigator.geolocation) {
+      setLocationError("Браузер не поддерживает определение местоположения; радиус не применён.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => { setPosition({ lat: coords.latitude, lon: coords.longitude }); setLocationError(""); },
+      () => setLocationError("Разрешите доступ к местоположению, чтобы фильтровать встречи по радиусу."),
+      { timeout: 10000, maximumAge: 60000 },
+    );
+  };
   return (
     <div className="flex flex-col gap-6 lg:flex-row">
       <aside className="w-full shrink-0 lg:w-75">
-        <FilterSidebar onApply={setAppliedFilters} />
+        <FilterSidebar onApply={applyFilters} />
+        {locationError && <p role="status" className="mt-2 text-sm text-amber-300">{locationError}</p>}
       </aside>
 
       <div className="min-w-0 flex-1 space-y-6">

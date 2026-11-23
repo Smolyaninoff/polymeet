@@ -17,14 +17,16 @@ export function validateMeetingForm(form: MeetingFormData): ValidationErrors {
   if (!form.categoryId) {
     errors.categoryId = "Выберите тематику";
   }
-  if (!form.date) {
+  if (!form.date || Number.isNaN(new Date(form.date).getTime())) {
     errors.date = "Укажите дату и время";
+  } else if (new Date(form.date).getTime() <= Date.now()) {
+    errors.date = "Дата встречи должна быть в будущем";
   }
-  if (!form.address.trim()) {
-    errors.address = "Укажите место встречи";
+  if (form.address.trim().length < 3) {
+    errors.address = "Укажите место встречи (не менее 3 символов)";
   }
-  if (form.maxSeats < 1) {
-    errors.maxSeats = "Минимум 1 место";
+  if (!Number.isInteger(form.maxSeats) || form.maxSeats < 2 || form.maxSeats > 100) {
+    errors.maxSeats = "Количество мест: от 2 до 100";
   }
 
   return errors;

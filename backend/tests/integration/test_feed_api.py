@@ -220,6 +220,18 @@ async def _explain(engine: AsyncEngine, filters: FeedFilters) -> str:
 async def test_feed_queries_use_indexes(
     engine: AsyncEngine, organizer: User, create_meeting: CreateMeeting
 ) -> None:
+    # Черновики не входят в частичные индексы опубликованных встреч. На четырёх
+    # строках выбор плана зависит от мелких колебаний статистики PostgreSQL.
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO meetings (organizer_id, category_id, title, starts_at, "
+                "duration_minutes, address, capacity) "
+                "SELECT :organizer_id, 1, 'Черновик', now() + interval '1 day', "
+                "90, 'Тестовый адрес', 5 FROM generate_series(1, 1000)"
+            ),
+            {"organizer_id": organizer.id},
+        )
     for km in (0.5, 2, 8, 15):
         await create_meeting(organizer, lat=north_of_center(km)[0], lon=CENTER[1])
     now = datetime.now(UTC)

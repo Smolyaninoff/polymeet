@@ -134,6 +134,13 @@ class AuthService:
         await self._login_limiter.reset(client_ip)
         return self._issue_tokens(user)
 
+    async def change_password(self, user: User, current_password: str, new_password: str) -> None:
+        if not await verify_password(current_password, user.password_hash):
+            raise InvalidCredentialsError("Неверный текущий пароль")
+        check_password(new_password, user.email)
+        user.password_hash = await hash_password(new_password, settings=self._settings)
+        await self._session.commit()
+
     async def refresh(self, refresh_token: str) -> AuthTokens:
         """Ротация: старый токен отзывается, выдаётся новая пара.
 

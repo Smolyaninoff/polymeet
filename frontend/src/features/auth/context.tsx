@@ -6,7 +6,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { apiPost, clearSession } from "@/shared/api/client";
+import { apiGet, apiPost, clearSession } from "@/shared/api/client";
 import type { AuthResponse, UserOut } from "@/shared/api/schema";
 import { queryClient } from "@/shared/api/queryClient";
 
@@ -16,6 +16,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateUser: (user: UserOut) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -51,13 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false;
 
-    fetch("/api/v1/users/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Invalid token");
-        return res.json();
-      })
+    apiGet<UserOut>("/users/me")
       .then((u: UserOut) => {
         if (!cancelled) {
           setUser(u);
@@ -120,7 +115,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, register, logout, updateUser: (next) => {
+      localStorage.setItem("user", JSON.stringify(next));
+      setUser(next);
+    } }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,29 +1,23 @@
 import { useEffect, useRef } from "react";
 import { MessageBubble } from "./MessageBubble";
-import type { ChatMessage } from "../mock";
+import type { ChatMessage } from "./useChatMessages";
 
 interface MessageListProps {
   messages: ChatMessage[];
+  currentUserId: number;
 }
 
-export function MessageList({ messages }: MessageListProps) {
+export function MessageList({ messages, currentUserId }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll to newest message
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
-      {messages.map((msg) => (
-        <MessageBubble
-          key={msg.id}
-          text={msg.text}
-          authorName={msg.authorName}
-          isMine={msg.authorId === "me"}
-          sentAt={msg.sentAt}
-        />
+      {messages.map((message) => (
+        <MessageBubble key={message.id} text={message.body} authorName={message.author_name}
+          isMine={message.author_id === currentUserId} sentAt={message.created_at} />
       ))}
       <div ref={bottomRef} />
     </div>
